@@ -5,6 +5,12 @@ terraform {
       version = "~> 3.0"
     }
   }
+    backend "azurerm" {
+    resource_group_name  = "rg-lab-terraform"
+    storage_account_name = "stlabterraformstate"
+    container_name       = "tfstate"
+    key                  = "lab.terraform.tfstate"
+    }
 }
 
 provider "azurerm" {
@@ -115,6 +121,7 @@ resource "azurerm_windows_virtual_machine" "dc01" {
     sku       = "2022-datacenter-g2"
     version   = "latest"
   }
+  vm_agent_platform_updates_enabled = true
 }
 
 resource "azurerm_public_ip" "lx01" {
