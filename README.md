@@ -147,11 +147,37 @@ state. For resources that couldn't be imported, deleted them via Azure CLI
   is necessary for clean resource group destroys when child resources are
   in an inconsistent state.
 
----
+## Phase 3.4 — Remote State Backend ✅
+**Completed: September 7, 2026**
 
-## Phase 3.4 — Remote State (Planned)
-Store Terraform state in Azure Storage Account backend for team-style
-state management.
+Migrated Terraform state from local file to Azure Storage Account backend —
+the standard pattern for team environments where multiple engineers share
+infrastructure state.
+
+**Resources created:**
+- Storage Account: `stlabterraformstate` (Standard LRS, East US)
+- Blob Container: `tfstate`
+- State file: `lab.terraform.tfstate`
+
+**Backend config added to `main.tf`:**
+```hcl
+backend "azurerm" {
+  resource_group_name  = "rg-lab-terraform"
+  storage_account_name = "stlabterraformstate"
+  container_name       = "tfstate"
+  key                  = "lab.terraform.tfstate"
+}
+```
+
+**Migration:** Ran `terraform init` after adding the backend block —
+Terraform detected the new backend and prompted to migrate existing local
+state to Azure Storage. Confirmed with `az storage blob list` that
+`lab.terraform.tfstate` landed in the container.
+
+**Verified:** `terraform plan` returned no changes after migration,
+confirming state integrity.
+
+---
 
 ## Phase 4 — Documentation & Resume Integration (Ongoing)
 
