@@ -128,12 +128,6 @@ region switches mid-apply triggered race conditions.
 state. For resources that couldn't be imported, deleted them via Azure CLI
 (`az group delete`) and cleared state files manually before a clean apply.
 
-### Issue 6 — Corrupted main.tf
-**Cause:** Terminal output from a failed Terraform run was accidentally pasted
-into `main.tf`, corrupting the file with non-HCL content.
-
-**Fix:** Rewrote `main.tf` from scratch using a heredoc (`cat > file 
-'EOF'`) to force a clean overwrite.
 
 ---
 
