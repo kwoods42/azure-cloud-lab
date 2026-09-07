@@ -179,8 +179,80 @@ confirming state integrity.
 
 ---
 
-## Phase 4 — Documentation & Resume Integration (Ongoing)
+## Phase 4 — Documentation & Resume Integration (Complete)
 
-## Phase 5 — Full AD Portfolio Environment (Planned)
-Domain Controller, File Server, IIS App Servers, Workstations, GPOs,
-M365 integration.
+								   ---
+
+## Phase 5 — Full AD Portfolio Environment ✅
+**Completed: September 7, 2026**
+
+Full enterprise-style Windows environment deployed in Azure, domain-joined
+and configured with AD structure, file services, IIS, and M365 integration.
+Infrastructure documented as code in `phase5-terraform/`.
+
+### 5.1 — Domain Controller ✅
+
+- Deployed `vm-lab-dc02` (Windows Server 2022, Standard_D2s_v7, East US)
+- Installed AD DS role and promoted to Domain Controller: domain `lab.local`
+- Configured OU structure: Servers, Workstations, ServiceAccounts
+- Created domain users: Declan Rice (`drice`), Mia Hamm (`mhamm`), Bobby Moore (`rmoore`)
+- Created security groups: `IT-Admins` (drice), `IT-Users` (mhamm, rmoore)
+- Created and linked GPOs: Password Policy, Drive Mapping, Desktop Lockdown
+- Configured domain password policy: 12-char minimum, complexity enabled, 90-day max age
+- Set static private IP (`10.20.1.6`) and pointed VNet DNS to DC
+
+### 5.2 — File Server ✅
+
+- Deployed `vm-lab-fs01`, domain-joined to `lab.local`
+- Installed File and Storage Services role
+- Created SMB shares: `\\fs01\Users`, `\\fs01\Dept`, `\\fs01\IT`
+- Applied NTFS permissions using AD security groups (no individual user ACEs):
+  - IT-Admins: FullControl on all shares
+  - IT-Users: Modify on Users and Dept; no access to IT share
+
+### 5.3 — IIS Application Servers ✅
+
+- Deployed `vm-lab-app01` (Standard_D2s_v7) and `vm-lab-app02` (Standard_D2lds_v7)
+- Both domain-joined to `lab.local`
+- IIS installed on both; static test page deployed to confirm service
+- Added NSG inbound rule AllowHTTP (port 80) scoped to VirtualNetwork
+- Verified HTTP 200 response from DC (`vm-lab-dc02`) to both app servers across VNet
+
+### 5.4 — Microsoft 365 Integration ✅
+
+- Provisioned M365 Business Basic trial tenant: `TBGWorks.onmicrosoft.com`
+- Created and licensed users mirroring AD accounts: drice, mhamm, rmoore
+- Assigned Global Administrator role to drice (mirrors IT-Admins group)
+- Created distribution group: `IT-Staff`
+- Created shared mailbox: `itsupport@TBGWorks.onmicrosoft.com`
+- Architectural decision: M365 over on-premises Exchange — lower cost, no
+  infrastructure overhead, reflects how most organizations run mail today
+
+### 5.5 — Terraform Documentation ✅
+
+Phase 5 VMs were provisioned manually via the Azure Portal as part of the
+learning process. The `phase5-terraform/` folder documents the full
+infrastructure as code and can be used to rebuild the environment from
+scratch. Existing VMs are intentionally not managed by this config to avoid
+disrupting the live AD environment.
+
+**Resources documented:**
+- `vm-lab-dc02` — Domain Controller, static IP 10.20.1.6
+- `vm-lab-fs01` — File Server
+- `vm-lab-app01` / `vm-lab-app02` — IIS Application Servers
+- All NICs, public IPs, and NSG associations
+- Remote state stored in `stlabterraformstate` / `tfstate` container,
+  key: `phase5.terraform.tfstate`
+
+---
+
+## Architecture Summary
+
+| VM | Role | Private IP | Domain |
+|---|---|---|---|
+| vm-lab-dc02 | Domain Controller (lab.local) | 10.20.1.6 | lab.local |
+| vm-lab-fs01 | File Server | 10.20.1.7 | lab.local |
+| vm-lab-app01 | IIS App Server | 10.20.1.8 | lab.local |
+| vm-lab-app02 | IIS App Server | 10.20.1.9 | lab.local |
+| vm-lab-dc01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
+| vm-lab-lx01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
