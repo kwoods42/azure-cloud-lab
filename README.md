@@ -1,26 +1,166 @@
 # Azure Cloud Lab
 
-Hands-on Azure infrastructure lab documenting my build-out from a 
+Hands-on Azure infrastructure lab documenting my build-out from a
 VMware/AD engineering background into cloud infrastructure.
 
 ## Tools
 - Azure Portal / Azure CLI
-- Terraform (Phase 3)
+- Terraform (Phase 3+)
 - GitHub for config management
 
-## Phase 1 — Networking & Virtual Machines ✅
-Completed: September 1, 2026
+---
 
-- Created Resource Group: rg-lab-eastus (East US)
-- Deployed Virtual Network: vnet-lab-eastus (10.10.0.0/16)
-  - Subnet: snet-servers (10.10.1.0/24)
-  - Subnet: snet-mgmt (10.10.2.0/24)
-- Deployed Windows Server 2025 VM: vm-lab-dc01
-- Deployed Ubuntu 24.04 LTS VM: vm-lab-lx01
+## Phase 1 — Networking & Virtual Machines ✅
+**Completed: September 1, 2026**
+
+- Created Resource Group: `rg-lab-eastus` (East US)
+- Deployed Virtual Network: `vnet-lab-eastus` (10.10.0.0/16)
+  - Subnet: `snet-servers` (10.10.1.0/24)
+  - Subnet: `snet-mgmt` (10.10.2.0/24)
+- Deployed Windows Server 2025 VM: `vm-lab-dc01`
+- Deployed Ubuntu 24.04 LTS VM: `vm-lab-lx01`
 - Verified RDP access (Windows) and SSH key auth (Linux) from local machine
 
-## Phase 2 — Entra ID & RBAC
-In progress
+---
 
-## Phase 3 — Terraform Automation
-Planned#
+## Phase 2 — Entra ID & RBAC ✅
+**Completed: September 2026**
+
+- Created Entra ID users: `lab-admin`, `lab-reader`, `lab-operator`
+- Created security groups: `grp-lab-admins`, `grp-lab-readers`
+- Assigned RBAC roles: Contributor to admins group, Reader to readers group
+- Verified read-only access by logging in as `lab-reader`
+- Created Service Principal `sp-terraform-lab` for Terraform authentication
+
+---
+
+## Phase 3 — Terraform Automation ✅
+**Completed: September 7, 2026**
+
+### 3.1 — Provider Configuration
+- Configured `azurerm` provider (~> 3.0) with Service Principal credentials
+- Stored credentials in `terraform.tfvars` (excluded from Git via `.gitignore`)
+
+### 3.2 — First Resource Group
+- Provisioned `rg-lab-terraform` via Terraform
+- Verified resource appeared in Azure Portal in real time
+- Committed initial config to GitHub
+
+### 3.3 — Full VNet + VM Stack ✅
+Reproduced the entire Phase 1 environment in Terraform code:
+
+**Resources provisioned:**
+- Resource Group: `rg-lab-terraform` (East US)
+- Virtual Network: `vnet-lab-terraform` (10.20.0.0/16)
+  - Subnet: `snet-servers` (10.20.1.0/24)
+- Network Security Group: `nsg-lab-servers`
+  - Inbound rules: RDP (3389) and SSH (22) restricted to home IP only
+- Windows Server 2022 VM: `vm-lab-dc01-tf` (Standard_D2s_v7)
+- Ubuntu 22.04 LTS VM: `vm-lab-lx01-tf` (Standard_D2s_v7)
+- Public IPs and NICs for both VMs
+- NSG associations on both NICs
+
+**Verified:**
+- SSH into Linux VM from Ouroboros6 confirmed
+- RDP into Windows VM confirmed
+
+---
+
+## Troubleshooting Log — Phase 3.3
+
+This section documents real issues encountered and how they were resolved.
+These are the kinds of problems that come up in production environments.
+
+### Issue 1 — Free Tier Public IP Limit
+**Error:** `PublicIPCountLimitReached — Cannot create more than 3 public IP
+addresses for this subscription in this region.`
+
+**Cause:** Phase 1 VMs were still allocated and holding public IPs, consuming
+the free tier limit of 3.
+
+**Fix:** Detached public IPs from Phase 1 NICs using `az network nic
+ip-config update --remove publicIpAddress`, then deleted the orphaned IPs.
+Phase 1 VMs were subsequently deleted entirely since Phase 3 Terraform
+reproduced the environment in code.
+
+### Issue 2 — vCPU Quota Exhausted
+**Error:** `OperationNotAllowed — exceeds approved Total Regional Cores quota.
+Current Limit: 4, Current Usage: 4.`
+
+**Cause:** Phase 1 VMs were using non-standard D-series sizes
+(`Standard_D2alds_v7`) that consumed all 4 available vCPUs even when
+deallocated, due to free tier quota behavior.
+
+**Fix:** Deleted Phase 1 VMs entirely to free quota. Upgraded subscription
+from Free Trial to Pay-As-You-Go to remove capacity restrictions.
+
+### Issue 3 — SKU Capacity Restrictions
+**Error:** `SkuNotAvailable — Standard_B2s / Standard_B1s / Standard_DS1_v2
+not available in eastus / eastus2 / westus2.`
+
+**Cause:** B-series and older D-series VM sizes were at capacity across
+multiple regions on the free tier. Affected East US, East US 2, and West US 2
+simultaneously.
+
+**Fix:** Queried available SKUs with `az vm list-skus` to find unrestricted
+sizes. Switched to `Standard_D2s_v7` which showed no capacity restrictions
+in East US.
+
+### Issue 4 — VM Image / Hypervisor Generation Mismatch
+**Error:** `BadRequest — 'Standard_D2s_v7' cannot boot Hypervisor Generation
+'1'. Image must match VM size generation.`
+
+**Cause:** Windows Server 2022 standard image is Gen 1; `Standard_D2s_v7`
+is Gen 2 only.
+
+**Fix:** Switched Windows image SKU from `2022-datacenter` to
+`2022-datacenter-g2` (the Gen 2 variant).
+
+### Issue 5 — Terraform State Drift
+**Error:** `A resource with the ID ... already exists - needs to be imported
+into State.`
+
+**Cause:** Multiple partial apply/destroy cycles caused Azure resources to
+exist without corresponding Terraform state entries. This happened after
+region switches mid-apply triggered race conditions.
+
+**Fix:** Used `terraform import` to reconcile orphaned resources back into
+state. For resources that couldn't be imported, deleted them via Azure CLI
+(`az group delete`) and cleared state files manually before a clean apply.
+
+### Issue 6 — Corrupted main.tf
+**Cause:** Terminal output from a failed Terraform run was accidentally pasted
+into `main.tf`, corrupting the file with non-HCL content.
+
+**Fix:** Rewrote `main.tf` from scratch using a heredoc (`cat > file 
+'EOF'`) to force a clean overwrite.
+
+---
+
+## Key Lessons Learned
+
+- **Always `terraform destroy` before changing regions** — partial builds
+  across region changes cause state drift that's painful to unwind.
+- **Free tier subscriptions have hidden capacity limits** that persist even
+  when VMs are deallocated. Pay-as-you-go removes these restrictions.
+- **Check SKU availability before applying** using `az vm list-skus` — saves
+  multiple failed apply cycles.
+- **VM image generation must match VM size generation** — D/v5+ sizes are
+  Gen 2 only; use `-g2` image SKUs accordingly.
+- **`terraform import`** is the right tool when state drifts — don't delete
+  and recreate if the resource already exists in Azure.
+- **`prevent_deletion_if_contains_resources = false`** in the provider block
+  is necessary for clean resource group destroys when child resources are
+  in an inconsistent state.
+
+---
+
+## Phase 3.4 — Remote State (Planned)
+Store Terraform state in Azure Storage Account backend for team-style
+state management.
+
+## Phase 4 — Documentation & Resume Integration (Ongoing)
+
+## Phase 5 — Full AD Portfolio Environment (Planned)
+Domain Controller, File Server, IIS App Servers, Workstations, GPOs,
+M365 integration.
