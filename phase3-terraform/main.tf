@@ -55,35 +55,40 @@ resource "azurerm_subnet" "servers" {
   address_prefixes     = ["10.20.1.0/24"]
 }
 
+resource "azurerm_subnet" "bastion" {
+  name                 = "AzureBastionSubnet"
+  resource_group_name  = azurerm_resource_group.lab.name
+  virtual_network_name = azurerm_virtual_network.lab.name
+  address_prefixes     = ["10.20.2.0/26"]
+}
+
+resource "azurerm_public_ip" "bastion" {
+  name                = "pip-lab-bastion"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+resource "azurerm_bastion_host" "lab" {
+  name                = "bastion-lab"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  sku                 = "Basic"
+
+  ip_configuration {
+    name                 = "bastion_ip_config"
+    subnet_id            = azurerm_subnet.bastion.id
+    public_ip_address_id = azurerm_public_ip.bastion.id
+  }
+}
+
 resource "azurerm_network_security_group" "lab" {
   name                = "nsg-lab-servers"
   location            = azurerm_resource_group.lab.location
   resource_group_name = azurerm_resource_group.lab.name
 
   security_rule {
-    name                       = "AllowRDP"
-    priority                   = 1001
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "3389"
-    source_address_prefix      = var.my_ip
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "AllowSSH"
-    priority                   = 1002
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = var.my_ip
-    destination_address_prefix = "*"
-  }
-    security_rule {
     name                       = "AllowHTTP"
     priority                   = 1003
     direction                  = "Inbound"
@@ -96,14 +101,6 @@ resource "azurerm_network_security_group" "lab" {
   }
 }
 
-resource "azurerm_public_ip" "dc01" {
-  name                = "pip-lab-dc01"
-  location            = azurerm_resource_group.lab.location
-  resource_group_name = azurerm_resource_group.lab.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-}
-
 resource "azurerm_network_interface" "dc01" {
   name                = "nic-lab-dc01"
   location            = azurerm_resource_group.lab.location
@@ -113,7 +110,6 @@ resource "azurerm_network_interface" "dc01" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.servers.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.dc01.id
   }
 }
 
@@ -146,14 +142,6 @@ resource "azurerm_windows_virtual_machine" "dc01" {
   vm_agent_platform_updates_enabled = true
 }
 
-resource "azurerm_public_ip" "lx01" {
-  name                = "pip-lab-lx01"
-  location            = azurerm_resource_group.lab.location
-  resource_group_name = azurerm_resource_group.lab.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-}
-
 resource "azurerm_network_interface" "lx01" {
   name                = "nic-lab-lx01"
   location            = azurerm_resource_group.lab.location
@@ -163,7 +151,6 @@ resource "azurerm_network_interface" "lx01" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.servers.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.lx01.id
   }
 }
 
@@ -197,12 +184,4 @@ resource "azurerm_linux_virtual_machine" "lx01" {
     sku       = "22_04-lts-gen2"
     version   = "latest"
   }
-}
-
-output "dc01_public_ip" {
-  value = azurerm_public_ip.dc01.ip_address
-}
-
-output "lx01_public_ip" {
-  value = azurerm_public_ip.lx01.ip_address
 }
