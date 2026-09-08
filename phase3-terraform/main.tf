@@ -110,6 +110,17 @@ resource "azurerm_network_security_group" "lab" {
     source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "*"
   }
+    security_rule {
+    name                       = "DenyAllInbound"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
 }
 
 resource "azurerm_network_interface" "dc01" {
