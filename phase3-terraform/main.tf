@@ -5,12 +5,12 @@ terraform {
       version = "~> 3.0"
     }
   }
-    backend "azurerm" {
+  backend "azurerm" {
     resource_group_name  = "rg-lab-terraform"
     storage_account_name = "stlabterraformstate"
     container_name       = "tfstate"
     key                  = "lab.terraform.tfstate"
-    }
+  }
 }
 
 provider "azurerm" {
@@ -21,8 +21,19 @@ provider "azurerm" {
   }
   subscription_id = var.subscription_id
   client_id       = var.client_id
-  client_secret   = var.client_secret
   tenant_id       = var.tenant_id
+  # client_secret is set via ARM_CLIENT_SECRET environment variable
+  # pulled from Key Vault at shell init — see README
+}
+
+data "azurerm_key_vault" "lab" {
+  name                = "kv-lab-terraform"
+  resource_group_name = "rg-lab-terraform"
+}
+
+data "azurerm_key_vault_secret" "admin_password" {
+  name         = "admin-password"
+  key_vault_id = data.azurerm_key_vault.lab.id
 }
 
 resource "azurerm_resource_group" "lab" {
@@ -72,6 +83,17 @@ resource "azurerm_network_security_group" "lab" {
     source_address_prefix      = var.my_ip
     destination_address_prefix = "*"
   }
+    security_rule {
+    name                       = "AllowHTTP"
+    priority                   = 1003
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "*"
+  }
 }
 
 resource "azurerm_public_ip" "dc01" {
@@ -106,7 +128,7 @@ resource "azurerm_windows_virtual_machine" "dc01" {
   resource_group_name = azurerm_resource_group.lab.name
   size                = "Standard_D2s_v7"
   admin_username      = var.admin_username
-  admin_password      = var.admin_password
+  admin_password      = data.azurerm_key_vault_secret.admin_password.value
 
   network_interface_ids = [azurerm_network_interface.dc01.id]
 
@@ -184,6 +206,3 @@ output "dc01_public_ip" {
 output "lx01_public_ip" {
   value = azurerm_public_ip.lx01.ip_address
 }
-
-
-
