@@ -128,7 +128,6 @@ region switches mid-apply triggered race conditions.
 state. For resources that couldn't be imported, deleted them via Azure CLI
 (`az group delete`) and cleared state files manually before a clean apply.
 
-
 ---
 
 ## Key Lessons Learned
@@ -179,9 +178,9 @@ confirming state integrity.
 
 ---
 
-## Phase 4 — Documentation & Resume Integration (Complete)
+## Phase 4 — Documentation & Resume Integration ✅
 
-								   ---
+---
 
 ## Phase 5 — Full AD Portfolio Environment ✅
 **Completed: September 7, 2026**
@@ -256,3 +255,70 @@ disrupting the live AD environment.
 | vm-lab-app02 | IIS App Server | 10.20.1.9 | lab.local |
 | vm-lab-dc01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
 | vm-lab-lx01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
+
+---
+
+## Phase 6 — Security Hardening ✅
+**Completed: September 8, 2026**
+
+Enterprise security controls applied across identity, network, monitoring,
+and compliance layers.
+
+### 6.1 — Azure Key Vault ✅
+
+- Deployed `kv-lab-terraform` (Standard SKU, RBAC authorization enabled)
+- Migrated Terraform secrets out of `terraform.tfvars` into Key Vault:
+  - `sp-client-secret` — Service Principal credential
+  - `admin-password` — VM local admin password
+- Terraform provider now reads `admin-password` via `data.azurerm_key_vault_secret`
+- `client_secret` handled via `ARM_CLIENT_SECRET` environment variable
+  sourced from Key Vault at session start (`source lab-env.sh`)
+- `client_secret` and `admin_password` removed from `variables.tf` and `terraform.tfvars`
+- Granted Service Principal (`sp-terraform-lab`) Key Vault Secrets User role
+
+### 6.2 — Azure Bastion ✅
+
+- Deployed `bastion-lab` (Basic SKU) in dedicated `AzureBastionSubnet` (10.20.2.0/26)
+- All VM access now routed through Bastion over HTTPS via Azure Portal
+- Removed public IPs from `vm-lab-dc01-tf` and `vm-lab-lx01-tf`
+- Removed RDP (3389) and SSH (22) inbound NSG rules — no direct internet exposure
+- Terraform state updated: public IP resources removed, Bastion resources imported
+
+### 6.3 — Defender for Cloud + Azure Monitor ✅
+
+- Enabled Microsoft Defender for Servers P2 (30-day trial, agentless VM scanning active)
+- Deployed Log Analytics workspace: `law-lab-eastus` (30-day retention, East US)
+- Connected Defender for Cloud to `law-lab-eastus` as the default workspace
+- Configured email security alerts via Defender for Cloud portal
+- Created Azure Monitor action group: `ag-lab-alerts` (email: kev.woods42@gmail.com)
+- Created VM CPU alert rule on `vm-lab-dc01-tf` — triggers when CPU < 1%
+  (detects unplanned deallocation)
+
+### 6.4 — Azure Policy ✅
+
+Three subscription-scoped policies assigned to enforce governance standards:
+
+| Policy | Scope | Effect |
+|---|---|---|
+| Require `environment` tag | Subscription | Deny untagged resources |
+| Allowed locations | Subscription | East US + global only |
+| Allowed VM SKUs | Subscription | B-series and D-series only |
+
+### 6.5 — Conditional Access & MFA ⚠️ Partial
+
+- Activated Microsoft Entra ID P2 trial on `TBGWorks.onmicrosoft.com`
+- Security Defaults confirmed disabled (prerequisite for Conditional Access)
+- **Note:** Conditional Access policies are the preferred enterprise approach
+  for MFA enforcement — requiring Entra ID P1/P2 licensing. In a production
+  environment, a policy requiring MFA for all users scoped to all cloud apps
+  would be configured in Report-only mode before enforcement. This is
+  documented here as the intended configuration pending portal access.
+
+### 6.6 — HTTPS on IIS ⬜ Pending
+*Requires vm-lab-app01 and vm-lab-app02 — scheduled for next session.*
+
+### 6.7 — AD Hardening ⬜ Pending
+*Requires vm-lab-dc02 — scheduled for next session.*
+
+### 6.8 — NSG Tightening ⬜ Pending
+*Scheduled for next session.*
