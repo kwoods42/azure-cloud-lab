@@ -304,15 +304,18 @@ Three subscription-scoped policies assigned to enforce governance standards:
 | Allowed locations | Subscription | East US + global only |
 | Allowed VM SKUs | Subscription | B-series and D-series only |
 
-### 6.5 — Conditional Access & MFA ⚠️ Partial
+### 6.5 — Conditional Access & MFA ✅
 
 - Activated Microsoft Entra ID P2 trial on `TBGWorks.onmicrosoft.com`
 - Security Defaults confirmed disabled (prerequisite for Conditional Access)
-- **Note:** Conditional Access policies are the preferred enterprise approach
-  for MFA enforcement — requiring Entra ID P1/P2 licensing. In a production
-  environment, a policy requiring MFA for all users scoped to all cloud apps
-  would be configured in Report-only mode before enforcement. This is
-  documented here as the intended configuration pending portal access.
+- Created Conditional Access policy: `Require MFA for All Users`
+  - Scope: All users, All cloud apps
+  - Excluded: KevinWoods@TBGWorks.onmicrosoft.com (break-glass admin account)
+  - Mode: Report-only (production best practice before enforcement)
+- **Note:** Conditional Access with MFA is the enterprise-preferred approach
+  over Security Defaults — requires Entra ID P1/P2 licensing. Report-only
+  mode logs what would have been enforced without blocking access, which is
+  the correct rollout pattern in any production environment.
 
 ### 6.6 — HTTPS on IIS ⬜ Pending
 *Requires vm-lab-app01 and vm-lab-app02 — scheduled for next session.*
