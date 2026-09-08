@@ -99,6 +99,17 @@ resource "azurerm_network_security_group" "lab" {
     source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "*"
   }
+    security_rule {
+    name                       = "AllowHTTPS"
+    priority                   = 1004
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "*"
+  }
 }
 
 resource "azurerm_network_interface" "dc01" {
