@@ -317,11 +317,48 @@ Three subscription-scoped policies assigned to enforce governance standards:
   mode logs what would have been enforced without blocking access, which is
   the correct rollout pattern in any production environment.
 
-### 6.6 — HTTPS on IIS ⬜ Pending
-*Requires vm-lab-app01 and vm-lab-app02 — scheduled for next session.*
+### 6.6 — HTTPS on IIS ✅
 
-### 6.7 — AD Hardening ⬜ Pending
-*Requires vm-lab-dc02 — scheduled for next session.*
+- Generated self-signed certificates on `vm-lab-app01` and `vm-lab-app02`
+  via `New-SelfSignedCertificate` (2-year validity, bound to `lab.local` FQDN)
+- Configured IIS HTTPS binding on port 443 on both app servers
+- Opened Windows Firewall for HTTPS (port 443) on both VMs
+- Added `AllowHTTPS` NSG inbound rule (port 443, source: VirtualNetwork)
+- Verified with `curl.exe -k https://localhost` — HTTP 200 confirmed on both servers
+- Terraform updated and verified clean (`No changes`)
 
-### 6.8 — NSG Tightening ⬜ Pending
-*Scheduled for next session.*
+### 6.7 — AD Hardening ✅
+
+- **Account Lockout Policy** applied via `Set-ADDefaultDomainPasswordPolicy`:
+  - Lockout threshold: 5 failed attempts
+  - Lockout duration: 30 minutes
+  - Observation window: 30 minutes
+- **Tiered Admin Model** implemented:
+  - Created dedicated admin account `drice-adm` (Declan Rice Admin)
+  - `drice-adm` added to `IT-Admins` security group
+  - `drice` (daily-use account) removed from `IT-Admins`
+  - Separation of duties: standard account for daily work, admin account
+    for elevated tasks only — mirrors enterprise privilege tiering best practice
+
+### 6.8 — NSG Tightening ✅
+
+- Added explicit `DenyAllInbound` rule at priority 4096 (lowest precedence)
+- NSG now follows whitelist model: only permitted traffic is explicitly allowed,
+  everything else is denied by policy rather than by default
+- Final NSG inbound ruleset:
+
+| Rule | Priority | Protocol | Port | Source | Action |
+|---|---|---|---|---|---|
+| AllowHTTP | 1003 | TCP | 80 | VirtualNetwork | Allow |
+| AllowHTTPS | 1004 | TCP | 443 | VirtualNetwork | Allow |
+| DenyAllInbound | 4096 | Any | Any | Any | Deny |
+
+- Terraform updated and verified clean (`No changes`)
+
+---
+
+## Phase 7 — Backup & Disaster Recovery (Planned)
+
+- Azure Backup for VM-level recovery points
+- Recovery Services Vault
+- Azure Site Recovery for failover capability
