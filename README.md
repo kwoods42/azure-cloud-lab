@@ -196,8 +196,7 @@ disrupting the live AD environment.
 ---
 ## Phase 6 — Security Hardening ✅
 **Completed: September 8, 2026**
-Enterprise security controls applied across identity, network, monitoring,
-and compliance layers.
+Security hardening applied across the full stack: Identity, network monitoring, and compliance.
 ### 6.1 — Azure Key Vault ✅
 - Deployed `kv-lab-terraform` (Standard SKU, RBAC authorization enabled)
 - Migrated Terraform secrets out of `terraform.tfvars` into Key Vault:
@@ -282,7 +281,7 @@ and a centralized Recovery Services Vault.
   to a secondary region automatically
 - Soft delete is AlwaysON — deleted backups are retained 14 days and cannot
   be disabled
-- Azure Monitor alerts are enabled out of the box for job failures and
+- Azure Monitor alerts are enabled by default for job failures and
   failover issues
 - Tagged `environment=lab` — required by the Azure Policy I enforced in Phase 6.4
 **Note:** Initial deployment was blocked by my own tag policy
