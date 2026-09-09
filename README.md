@@ -357,8 +357,65 @@ Three subscription-scoped policies assigned to enforce governance standards:
 
 ---
 
-## Phase 7 — Backup & Disaster Recovery (Planned)
+---
 
-- Azure Backup for VM-level recovery points
-- Recovery Services Vault
-- Azure Site Recovery for failover capability
+## Phase 7 — Backup & Disaster Recovery ✅
+**Completed: September 9, 2026**
+
+I deployed VM-level backup protection across all lab VMs using Azure Backup
+and a centralized Recovery Services Vault.
+
+### 7.1 — Recovery Services Vault ✅
+
+- Deployed `rsv-lab-eastus` (Standard SKU, East US)
+- I configured storage redundancy as GeoRedundant — backup data is replicated
+  to a secondary region automatically
+- Soft delete is AlwaysON — deleted backups are retained 14 days and cannot
+  be disabled
+- Azure Monitor alerts are enabled out of the box for job failures and
+  failover issues
+- Tagged `environment=lab` — required by the Azure Policy I enforced in Phase 6.4
+
+**Note:** Initial deployment was blocked by my own tag policy
+(`require-environment-tag`). I resolved it by adding `--tags environment=lab`
+to the vault creation command — a real-world example of governance controls
+enforcing standards across all resource types including DR infrastructure.
+
+### 7.2 — Backup Policy ✅
+
+- I used `DefaultPolicy` (daily backups, 30-day retention, UTC 00:30)
+- Custom policy creation was blocked by a known Azure CLI bug — DefaultPolicy
+  meets all lab requirements and is the standard starting point in production
+
+### 7.3 — VM Backup Enrollment ✅
+
+I enrolled all six lab VMs in Azure Backup under DefaultPolicy:
+
+| VM | Role | Backup Status |
+|---|---|---|
+| vm-lab-dc01-tf | Terraform baseline (Windows) | Enrolled ✅ |
+| vm-lab-lx01-tf | Terraform baseline (Linux) | Enrolled ✅ |
+| vm-lab-dc02 | Domain Controller | Enrolled ✅ |
+| vm-lab-fs01 | File Server | Enrolled ✅ |
+| vm-lab-app01 | IIS App Server | Enrolled ✅ |
+| vm-lab-app02 | IIS App Server | Enrolled ✅ |
+
+### 7.4 — Backup Verification ✅
+
+- I triggered an on-demand backup of `vm-lab-dc02` to verify the end-to-end
+  backup pipeline
+- The initial attempt failed: Azure Backup auto-created resource group
+  `AzureBackupRG_eastus_1` was blocked by my tag policy — I resolved it by
+  creating a policy exemption (Waiver category) scoped to that resource group
+- The second attempt succeeded: snapshot taken, transferred to vault, validated
+- I confirmed a recovery point exists in `rsv-lab-eastus`
+
+---
+
+## Phase 8 — Planned
+
+Candidates for my next phase:
+- GitHub Actions CI/CD pipeline for Terraform (plan on PR, apply on merge)
+- Azure Monitor KQL queries and workbook dashboards
+- AD event alerting (failed logins, lockouts, group membership changes)
+- Azure Automation runbooks (scheduled VM start/stop, user provisioning)
