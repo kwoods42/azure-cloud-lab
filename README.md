@@ -255,7 +255,7 @@ environment.
 | vm-lab-dc02 | Domain Controller (lab.local) | 10.20.1.6 | lab.local |
 | vm-lab-fs01 | File Server | 10.20.1.7 | lab.local |
 | vm-lab-app01 | IIS App Server | 10.20.1.8 | lab.local |
-| vm-lab-app02 | IIS App Server | 10.20.1.9 | lab.local |
+| vm-lab-app02 | Database Server (SQL Express) | 10.20.1.9 | lab.local |
 | vm-lab-dc01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
 | vm-lab-lx01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
 
@@ -281,7 +281,7 @@ monitoring, and compliance.
 
 ### 6.2 — Azure Bastion ✅
 
-- Deployed `bastion-lab` (Basic SKU) in dedicated `AzureBastionSubnet` (10.20.2.0/26)
+- Deployed `bastion-lab` (upgraded to Standard SKU in Phase 8.1) in dedicated `AzureBastionSubnet` (10.20.2.0/26)
 - All VM access now routed through Bastion over HTTPS via Azure Portal
 - Removed public IPs from `vm-lab-dc01-tf` and `vm-lab-lx01-tf`
 - Removed RDP (3389) and SSH (22) inbound NSG rules — no direct internet exposure
@@ -401,7 +401,7 @@ Enrolled all six lab VMs in Azure Backup under DefaultPolicy:
 | vm-lab-dc02 | Domain Controller | Enrolled ✅ |
 | vm-lab-fs01 | File Server | Enrolled ✅ |
 | vm-lab-app01 | IIS App Server | Enrolled ✅ |
-| vm-lab-app02 | IIS App Server | Enrolled ✅ |
+| vm-lab-app02 | Database Server | Enrolled ✅ |
 
 ### 7.4 — Backup Verification ✅
 
@@ -415,10 +415,107 @@ Enrolled all six lab VMs in Azure Backup under DefaultPolicy:
 
 ---
 
-## Phase 8 — Planned
+## Phase 8 — Database Tier, Monitoring & Automation
+**Started: September 2026**
 
-Planned for Phase 8:
-- GitHub Actions CI/CD pipeline for Terraform (plan on PR, apply on merge)
-- Azure Monitor KQL queries and workbook dashboards
-- AD event alerting (failed logins, lockouts, group membership changes)
-- Azure Automation runbooks (scheduled VM start/stop, user provisioning)
+### 8.1 — Database Server (vm-lab-app02 → vm-lab-db01) ✅
+**Completed: September 14, 2026**
+
+Repurposed `vm-lab-app02` as a dedicated database server running SQL Server
+Express 2022, adding a database tier to the environment and completing a
+three-tier architecture: IIS (web) → app → database.
+
+**Infrastructure changes:**
+- Deployed NAT Gateway `natgw-lab` with public IP `pip-lab-natgateway` —
+  provides outbound internet access for VMs without exposing them to inbound
+  traffic. Required for SQL Server Express download and future Windows Updates.
+- Attached NAT Gateway to `snet-servers` subnet
+- Configured DNS forwarders on `vm-lab-dc02` (8.8.8.8, 8.8.4.4) for external
+  name resolution
+- Added `AllowVnetInbound` NSG rule (priority 1000) — allows all intra-VNet
+  traffic
+- Added `AllowSQL` NSG rule (priority 1005, TCP 1433, source: VirtualNetwork)
+- Upgraded Bastion to Standard SKU with native tunneling enabled
+- Added `environment=lab` tags to NSG, Bastion, and pip-bastion resources
+  to satisfy Azure Policy tag enforcement
+
+**SQL Server Express 2022:**
+- Installed via `az vm run-command` (Bastion interactive sessions unavailable
+  from local machine — documented as known issue)
+- Silent install using full installer `SQLEXPR_x64_ENU.exe` (279MB)
+- Instance name: `SQLEXPRESS`
+- Data directory: `C:\SQLData`
+- Service account: `NT AUTHORITY\NETWORK SERVICE`
+- Startup type: Automatic
+- Verified: `LabDB` created and confirmed via `sys.databases`
+
+**Troubleshooting log:**
+
+### Issue 1 — VM-to-VM Communication Failure
+
+**Cause:** The `DenyAllInbound` NSG rule added in Phase 6.8 was blocking all
+inbound traffic including intra-subnet traffic. Only ports 80 and 443 were
+explicitly allowed — ICMP, DNS (53), and all other inter-VM traffic was
+being denied by the catch-all deny rule.
+
+**Fix:** Added `AllowVnetInbound` at priority 1000 — permits all traffic
+sourced from the VirtualNetwork service tag, restoring intra-subnet
+communication while keeping the `DenyAllInbound` rule blocking external
+traffic.
+
+### Issue 2 — No Outbound Internet on VMs
+
+**Cause:** Removing public IPs in Phase 6.2 also removed the default outbound
+route. VMs had no path to the internet for downloads or external DNS
+resolution.
+
+**Fix:** Deployed NAT Gateway `natgw-lab` and attached it to `snet-servers`.
+Configured DNS forwarders on dc02 to forward external queries to 8.8.8.8
+and 8.8.4.4. Temporarily pointed vm-lab-app02 DNS directly to Google DNS
+(8.8.8.8) to unblock the install — will restore to dc02 once DC forwarder
+is verified stable.
+
+### Issue 3 — SQL Server Sector Size Mismatch
+
+**Error:** `Cannot use file 'master.mdf' because it was originally formatted
+with sector size 4096 and is now on a volume with sector size 8192.`
+
+**Cause:** Azure VM disk (Standard_D2lds_v7) uses 8192-byte physical sectors.
+SQL Server 2022 installer created system database files expecting 4096-byte
+sectors during the first install attempt which timed out.
+
+**Fix:** Added registry key
+`HKLM:\SYSTEM\CurrentControlSet\Services\stornvme\Parameters\Device`
+with `ForcedPhysicalSectorSizeInBytes = * 4095` to force 4096-byte sector
+reporting. Uninstalled SQL Server, deleted corrupted data files, and
+reinstalled fresh with explicit data directory flags.
+
+### Issue 4 — SQL Install Timeout
+
+**Cause:** First install attempt used the SSEI bootstrapper (`SQL2022-SSEI-Expr.exe`)
+which downloads the full installer at runtime. The combined download and
+install exceeded the 90-minute `run-command` timeout.
+
+**Fix:** Downloaded the full installer (`SQLEXPR_x64_ENU.exe`, 279MB) directly
+in a separate run-command, then ran the silent install as a second step —
+keeping each operation well within the timeout window.
+
+**Updated NSG ruleset:**
+
+| Rule | Priority | Protocol | Port | Source | Action |
+|---|---|---|---|---|---|
+| AllowVnetInbound | 1000 | Any | Any | VirtualNetwork | Allow |
+| AllowHTTP | 1003 | TCP | 80 | VirtualNetwork | Allow |
+| AllowHTTPS | 1004 | TCP | 443 | VirtualNetwork | Allow |
+| AllowSQL | 1005 | TCP | 1433 | VirtualNetwork | Allow |
+| DenyAllInbound | 4096 | Any | Any | Any | Deny |
+
+### 8.2 — GitHub Actions CI/CD for Terraform ⬜ Planned
+### 8.3 — Azure Monitor KQL + Workbooks ⬜ Planned
+### 8.4 — Azure Automation Runbooks ⬜ Planned
+---
+
+## Planned for Phase 9
+- Azure DNS private zones
+- VNet peering / hub-spoke topology
+- Privileged Identity Management (PIM)
