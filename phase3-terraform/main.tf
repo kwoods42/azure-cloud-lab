@@ -68,6 +68,7 @@ resource "azurerm_public_ip" "bastion" {
   resource_group_name = azurerm_resource_group.lab.name
   allocation_method   = "Static"
   sku                 = "Standard"
+  tags                = { environment = "lab" }
 }
 
 resource "azurerm_bastion_host" "lab" {
@@ -75,6 +76,7 @@ resource "azurerm_bastion_host" "lab" {
   location            = azurerm_resource_group.lab.location
   resource_group_name = azurerm_resource_group.lab.name
   sku                 = "Basic"
+  tags                = { environment = "lab" }
 
   ip_configuration {
     name                 = "bastion_ip_config"
@@ -83,11 +85,12 @@ resource "azurerm_bastion_host" "lab" {
   }
 }
 
+
 resource "azurerm_network_security_group" "lab" {
   name                = "nsg-lab-servers"
   location            = azurerm_resource_group.lab.location
   resource_group_name = azurerm_resource_group.lab.name
-
+  tags                = { environment = "lab" }
   security_rule {
     name                       = "AllowHTTP"
     priority                   = 1003
