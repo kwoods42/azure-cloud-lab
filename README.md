@@ -693,7 +693,73 @@ Terraform to read and write state blobs.
 
 ---
 
-### 8.3 — Azure Monitor KQL + Workbooks ⬜ Planned
+### 8.3 — Azure Monitor KQL + Workbooks ✅
+**Completed: September 16, 2026**
+
+Deployed full observability stack connecting three lab VMs to the existing
+Log Analytics workspace `law-lab-eastus` and built a custom Azure Monitor
+Workbook surfacing infrastructure health data.
+
+**Azure Monitor Agent deployment:**
+- Installed AzureMonitorWindowsAgent extension on vm-lab-dc02, vm-lab-fs01,
+  and vm-lab-app02
+- Assigned system-managed identity to all three VMs — required for AMA
+  authentication to the Data Collection Rule
+- Created policy exemption for VM extension deployment (tag policy blocks
+  extension resources by default)
+
+**Data Collection Rule — `dcr-lab-windows`:**
+- Collects Windows performance counters every 60 seconds:
+  `% Processor Time`, `Available MBytes`, `% Free Space`
+- Collects Windows Event log (System errors/warnings) and Security events
+  (EventID 4624, 4625, 4648 — logon success, failure, explicit credentials)
+- Associated with all three VMs and routing to `law-lab-eastus`
+
+**KQL queries developed:**
+- VM heartbeat status with online/offline classification
+- CPU % over time per computer (5-minute bins)
+- Available memory over time per computer (5-minute bins)
+- System event count by computer and severity level
+
+**Workbook — `wb-lab-infrastructure`:**
+- Four panels: VM Heartbeat Status (grid), CPU % Over Time (line chart),
+  Available Memory MB (line chart), System Events by Computer (grid)
+- Saved to `rg-lab-terraform`, East US, tagged `environment=lab`
+- ARM template exported and committed to repo as
+  `workbook-lab-infrastructure.json` — workbook is fully reproducible
+  from code
+
+**Troubleshooting log:**
+
+### Issue 1 — No Heartbeat Data After Agent Install
+**Cause:** AMA requires a system-assigned managed identity to authenticate
+to the Data Collection Rule. VMs had no managed identity assigned.
+**Fix:** Assigned system-assigned managed identity to all three VMs via
+`az vm identity assign`.
+
+### Issue 2 — Tag Policy Blocking Agent Extension Install
+**Cause:** The `require-environment-tag` policy enforced in Phase 6
+blocked VM extension deployment. `az vm extension set` has no `--tags`
+flag to satisfy the policy inline.
+**Fix:** Created a policy exemption (Waiver) scoped to `rg-lab-terraform`
+covering the tag policy assignment.
+
+### Issue 3 — SKU Policy Blocking Identity Assignment on vm-lab-app02
+**Cause:** Assigning a managed identity to vm-lab-app02 triggered the
+`allowed-vm-skus` policy check and was blocked.
+**Fix:** Created a targeted policy exemption scoped directly to
+`vm-lab-app02` for the SKU policy assignment.
+
+### Issue 4 — SecurityEvent Table Missing
+**Cause:** The Security event log XPath queries in the DCR route to the
+generic `Event` table rather than `SecurityEvent` — `SecurityEvent` requires
+Microsoft Sentinel or Defender for Cloud to be enabled on the workspace.
+**Fix:** Used the `Event` table for system event monitoring. Security event
+collection (4624/4625/4648) is configured in the DCR and available for
+future Sentinel integration.
+
+---
+
 ### 8.4 — Azure Automation Runbooks ⬜ Planned
 ---
 
