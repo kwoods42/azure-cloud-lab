@@ -1,3 +1,4 @@
+cat > ~/azure-cloud-lab/.github/workflows/terraform.yml << 'EOF'
 name: Terraform CI/CD
 
 on:
@@ -17,6 +18,32 @@ env:
 
 jobs:
   terraform-plan:
+    name: Plan (${{ matrix.directory }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: [phase3-terraform, phase5-terraform]
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ${{ matrix.directory }}
+        run: terraform init
+
+      - name: Terraform Format Check
+        working-directory: ${{ matrix.directory }}
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        working-directory: ${{ matrix.directory }}
+        run: terraform validate
+
       - name: Terraform Plan
         working-directory: ${{ matrix.directory }}
         id: plan
@@ -28,6 +55,13 @@ jobs:
         run: |
           echo "Terraform plan failed"
           exit 1
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.directory }}
+          path: ${{ matrix.directory }}/tfplan
+          retention-days: 1
 
   terraform-apply-phase3:
     name: Apply (phase3-terraform)
@@ -82,3 +116,4 @@ jobs:
       - name: Terraform Apply
         working-directory: phase5-terraform
         run: terraform apply -auto-approve tfplan
+EOF
