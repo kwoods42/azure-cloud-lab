@@ -103,7 +103,7 @@ resource "azurerm_network_security_group" "lab" {
     source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "*"
   }
-    security_rule {
+  security_rule {
     name                       = "AllowHTTPS"
     priority                   = 1004
     direction                  = "Inbound"
@@ -114,7 +114,7 @@ resource "azurerm_network_security_group" "lab" {
     source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "*"
   }
-    security_rule {
+  security_rule {
     name                       = "AllowSQL"
     priority                   = 1005
     direction                  = "Inbound"
@@ -125,7 +125,7 @@ resource "azurerm_network_security_group" "lab" {
     source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "*"
   }
-    security_rule {
+  security_rule {
     name                       = "DenyAllInbound"
     priority                   = 4096
     direction                  = "Inbound"

@@ -80,12 +80,12 @@ resource "azurerm_network_interface_security_group_association" "dc02" {
 }
 
 resource "azurerm_windows_virtual_machine" "dc02" {
-  name                = "vm-lab-dc02"
-  location            = data.azurerm_resource_group.lab.location
-  resource_group_name = data.azurerm_resource_group.lab.name
-  size                = "Standard_D2s_v7"
-  admin_username      = var.admin_username
-  admin_password      = var.admin_password
+  name                              = "vm-lab-dc02"
+  location                          = data.azurerm_resource_group.lab.location
+  resource_group_name               = data.azurerm_resource_group.lab.name
+  size                              = "Standard_D2s_v7"
+  admin_username                    = var.admin_username
+  admin_password                    = var.admin_password
   secure_boot_enabled               = true
   vtpm_enabled                      = true
   vm_agent_platform_updates_enabled = true
@@ -133,12 +133,12 @@ resource "azurerm_network_interface_security_group_association" "fs01" {
 }
 
 resource "azurerm_windows_virtual_machine" "fs01" {
-  name                = "vm-lab-fs01"
-  location            = data.azurerm_resource_group.lab.location
-  resource_group_name = data.azurerm_resource_group.lab.name
-  size                = "Standard_D2s_v7"
-  admin_username      = var.admin_username
-  admin_password      = var.admin_password
+  name                              = "vm-lab-fs01"
+  location                          = data.azurerm_resource_group.lab.location
+  resource_group_name               = data.azurerm_resource_group.lab.name
+  size                              = "Standard_D2s_v7"
+  admin_username                    = var.admin_username
+  admin_password                    = var.admin_password
   secure_boot_enabled               = true
   vtpm_enabled                      = true
   vm_agent_platform_updates_enabled = true
@@ -186,12 +186,12 @@ resource "azurerm_network_interface_security_group_association" "app01" {
 }
 
 resource "azurerm_windows_virtual_machine" "app01" {
-  name                = "vm-lab-app01"
-  location            = data.azurerm_resource_group.lab.location
-  resource_group_name = data.azurerm_resource_group.lab.name
-  size                = "Standard_D2s_v7"
-  admin_username      = var.admin_username
-  admin_password      = var.admin_password
+  name                              = "vm-lab-app01"
+  location                          = data.azurerm_resource_group.lab.location
+  resource_group_name               = data.azurerm_resource_group.lab.name
+  size                              = "Standard_D2s_v7"
+  admin_username                    = var.admin_username
+  admin_password                    = var.admin_password
   secure_boot_enabled               = true
   vtpm_enabled                      = true
   vm_agent_platform_updates_enabled = true
@@ -239,12 +239,12 @@ resource "azurerm_network_interface_security_group_association" "app02" {
 }
 
 resource "azurerm_windows_virtual_machine" "app02" {
-  name                = "vm-lab-app02"
-  location            = data.azurerm_resource_group.lab.location
-  resource_group_name = data.azurerm_resource_group.lab.name
-  size                = "Standard_D2lds_v7"
-  admin_username      = var.admin_username
-  admin_password      = var.admin_password
+  name                              = "vm-lab-app02"
+  location                          = data.azurerm_resource_group.lab.location
+  resource_group_name               = data.azurerm_resource_group.lab.name
+  size                              = "Standard_D2lds_v7"
+  admin_username                    = var.admin_username
+  admin_password                    = var.admin_password
   secure_boot_enabled               = true
   vtpm_enabled                      = true
   vm_agent_platform_updates_enabled = true
