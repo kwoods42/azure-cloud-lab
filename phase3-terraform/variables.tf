@@ -11,3 +11,8 @@ variable "ssh_public_key" {
   description = "SSH public key for Linux VM"
   sensitive   = true
 }
+
+variable "admin_password" {
+  description = "Admin password for Windows VMs"
+  sensitive   = true
+}
