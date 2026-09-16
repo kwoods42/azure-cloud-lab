@@ -48,6 +48,7 @@ jobs:
       - name: Terraform Plan
         working-directory: ${{ matrix.directory }}
         run: |
+          set +e
           terraform plan -out=tfplan -detailed-exitcode
           exit_code=$?
           if [ $exit_code -eq 1 ]; then
