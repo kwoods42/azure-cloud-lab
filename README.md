@@ -510,7 +510,189 @@ keeping each operation well within the timeout window.
 | AllowSQL | 1005 | TCP | 1433 | VirtualNetwork | Allow |
 | DenyAllInbound | 4096 | Any | Any | Any | Deny |
 
-### 8.2 — GitHub Actions CI/CD for Terraform ⬜ Planned
+### 8.2 — GitHub Actions CI/CD for Terraform ✅
+**Completed: September 16, 2026**
+
+Implemented a full CI/CD pipeline for Terraform using GitHub Actions, with a
+matrix strategy running plan across both Terraform directories in parallel and
+auto-apply scoped to the live infrastructure directory on merge to main.
+
+**Pipeline design:**
+- `terraform plan` runs in parallel across `phase3-terraform` and
+  `phase5-terraform` on every push and pull request via a matrix strategy
+- `terraform apply` runs only on `phase3-terraform` on merge to main —
+  phase5 is brownfield documentation, not live state, so apply is intentionally
+  excluded
+- Apply is sequenced to run only after both plans succeed
+- Plan artifacts (tfplan files) are uploaded and passed to the apply job —
+  the same plan that was reviewed is what gets applied, never a fresh run
+- `workflow_dispatch` is available as a manual trigger
+- `fail-fast: false` on the matrix ensures a phase5 plan failure does not
+  cancel the phase3 plan
+
+**GitHub repository secrets configured:**
+- `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_SUBSCRIPTION_ID`, `ARM_TENANT_ID`
+  — feed the azurerm provider directly via environment variables
+- `TF_VAR_subscription_id`, `TF_VAR_client_id`, `TF_VAR_tenant_id`,
+  `TF_VAR_admin_password`, `TF_VAR_ssh_public_key` — supply Terraform input
+  variables without committing a tfvars file to the repo
+
+---
+
+### Troubleshooting Log — Phase 8.2
+
+#### Issue 1 — Workflow YAML Syntax Error
+
+**Error:** `A sequence was not expected` on line 20.
+
+**Cause:** The workflow file was saved with the heredoc shell wrapper (`cat >
+... << 'EOF'`) included as content, making the first line of the file a bash
+command rather than valid YAML.
+
+**Fix:** Rewrote the file using a heredoc with a distinct delimiter (`ENDOFFILE`)
+to avoid the shell wrapper being captured as file content.
+
+---
+
+#### Issue 2 — Terraform Plan Exit Code 3 Failing the Job
+
+**Error:** `Terraform exited with code 3. Process completed with exit code 1.`
+
+**Cause:** Three compounding factors:
+1. `terraform plan -detailed-exitcode` returns exit code 2 when changes are
+   detected — not an error, but GitHub Actions treated it as one.
+2. `hashicorp/setup-terraform@v3` wraps the Terraform binary and intercepts
+   exit codes before shell logic can handle them.
+3. GitHub Actions `run` blocks execute with `set -e` by default, causing the
+   shell to exit immediately on any non-zero return before `$?` could be
+   captured.
+
+**Fix:** Disabled the Terraform wrapper (`terraform_wrapper: false`) and
+removed `-detailed-exitcode` entirely. Standard `terraform plan` returns 0
+on success and 1 on error — no special handling needed.
+
+---
+
+#### Issue 3 — Format Check Failing the Pipeline
+
+**Error:** `terraform fmt -check` exiting with code 3, failing both plan jobs.
+
+**Cause:** `main.tf` in phase3-terraform had formatting inconsistencies —
+misaligned equals signs and improper indentation that accumulated across
+multiple manual edits throughout the lab.
+
+**Fix:** Ran `terraform fmt` locally in both directories to auto-correct
+formatting, then committed the corrected files. The `-check` flag in CI is
+correct behavior — it enforces that all committed code is properly formatted.
+
+---
+
+#### Issue 4 — Undeclared Variable: client_secret (phase5)
+
+**Error:** `Reference to undeclared input variable` — `var.client_secret` on
+line 31 of phase5 `main.tf`.
+
+**Cause:** The phase5 provider block still referenced `var.client_secret` from
+before Key Vault took over secret management in Phase 6. The variable was
+never declared because phase3 handles authentication via the `ARM_CLIENT_SECRET`
+environment variable.
+
+**Fix:** Removed the `client_secret` line from the phase5 provider block. The
+azurerm provider picks up `ARM_CLIENT_SECRET` from the environment
+automatically without needing it explicitly declared.
+
+---
+
+#### Issue 5 — Symlinked Files Not Resolving in CI
+
+**Error:** `No configuration files` — Terraform plan failing in 0 seconds.
+
+**Cause:** `phase5-terraform/terraform.tfvars` and `phase5-terraform/variables.tf`
+were symlinks pointing to `../phase3-terraform/`. Git stores symlinks as
+symlink objects, not file content. The GitHub Actions runner checked out the
+symlinks correctly but the relative target path did not resolve in the runner
+environment.
+
+**Fix:** Removed the symlinks and replaced them with real file copies. `terraform.tfvars`
+is gitignored and not committed — variables are supplied via `TF_VAR_*`
+environment variables from GitHub Secrets instead.
+
+---
+
+#### Issue 6 — Undeclared Variable: admin_password
+
+**Error:** `Reference to undeclared input variable` — `var.admin_password`
+referenced in four Windows VM resources in phase5 `main.tf`.
+
+**Cause:** `admin_password` was never declared in `variables.tf` because phase3
+retrieves it from Key Vault via a data source rather than as an input variable.
+Phase5 references it directly as `var.admin_password` but had no corresponding
+declaration.
+
+**Fix:** Added `variable "admin_password" {}` to both `variables.tf` files and
+added `TF_VAR_admin_password` to GitHub Secrets, sourced from Key Vault.
+
+---
+
+#### Issue 7 — SSH Key Type Mismatch
+
+**Error:** `the provided ssh-ed25519 SSH key is not supported. Only RSA SSH
+keys are supported by Azure`
+
+**Cause:** The local SSH key on Ouroboros6 is ed25519. Azure's azurerm provider
+requires RSA keys for Linux VM `admin_ssh_key` blocks. The ed25519 public key
+was stored in `TF_VAR_ssh_public_key` and passed to the runner.
+
+**Fix:** Generated a dedicated RSA 4096-bit key pair for CI (`id_rsa_lab`).
+Updated `TF_VAR_ssh_public_key` in GitHub Secrets with the RSA public key.
+Added a `lifecycle { ignore_changes = [admin_ssh_key] }` block to `vm-lab-lx01-tf`
+to prevent Terraform from forcing VM replacement when the key differs from
+what was used at creation time.
+
+---
+
+#### Issue 8 — CI Apply Attempting to Destroy Brownfield VMs
+
+**Error:** Phase5 apply attempting to destroy dc02, fs01, app01, app02 —
+blocked by the `require-environment-tag` Azure Policy enforced in Phase 6,
+and by deallocated VM power state conflicts.
+
+**Cause:** Phase5 Terraform was set up as brownfield documentation using data
+sources to reference Phase 3 infrastructure. It was never intended to manage
+live VM lifecycle. When apply ran in CI, Terraform detected drift between
+the documented state and actual Azure resource configuration and queued
+destructive changes.
+
+**Fix:** Removed the `terraform-apply-phase5` job from the workflow entirely.
+Phase5 runs plan only — this validates the configuration is syntactically
+correct and documents what would change, without risking unintended
+destruction of the AD environment. This is the architecturally correct pattern:
+plan everywhere, apply only where Terraform owns the resource lifecycle.
+
+**Note:** This was also a real-world demonstration of Phase 6 governance
+working as designed — the tag enforcement policy blocked unauthorized resource
+modifications from an automated pipeline, exactly as it would in a production
+environment.
+
+---
+
+#### Issue 9 — SP Missing Storage Blob Permissions for Remote State
+
+**Error:** `Failed to get existing workspaces: retrieving container client:
+retrieving key for Storage Account` — HTTP response nil, connection reset.
+
+**Cause:** The Service Principal `sp-terraform-lab` had Contributor at the
+subscription scope but lacked explicit permissions on the storage account
+backing the Terraform remote state. GitHub Actions runners authenticate
+differently than an interactive CLI session — the runner has no cached
+credentials or managed identity fallback.
+
+**Fix:** Assigned `Storage Blob Data Contributor` to `sp-terraform-lab` scoped
+directly to `stlabterraformstate`. This is the minimum required permission for
+Terraform to read and write state blobs.
+
+---
+
 ### 8.3 — Azure Monitor KQL + Workbooks ⬜ Planned
 ### 8.4 — Azure Automation Runbooks ⬜ Planned
 ---
