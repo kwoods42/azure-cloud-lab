@@ -90,31 +90,3 @@ jobs:
         working-directory: phase3-terraform
         run: terraform apply -auto-approve tfplan
 
-  terraform-apply-phase5:
-    name: Apply (phase5-terraform)
-    runs-on: ubuntu-latest
-    needs: terraform-apply-phase3
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Terraform Init
-        working-directory: phase5-terraform
-        run: terraform init
-
-      - name: Download Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan-phase5-terraform
-          path: phase5-terraform
-
-      - name: Terraform Apply
-        working-directory: phase5-terraform
-        run: terraform apply -auto-approve tfplan
