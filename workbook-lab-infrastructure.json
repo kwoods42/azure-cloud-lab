@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workbooks_66f9fcf7_518a_427c_9388_5f4ca0b35054_name": {
+      "type": "String"
+    },
+    "workbooks_66f9fcf7_518a_427c_9388_5f4ca0b35054_serializedData": {
+      "type": "SecureString"
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "2023-06-01",
+      "identity": {
+        "type": "None"
+      },
+      "kind": "shared",
+      "location": "eastus",
+      "name": "[parameters('workbooks_66f9fcf7_518a_427c_9388_5f4ca0b35054_name')]",
+      "properties": {
+        "category": "workbook",
+        "displayName": "wb-lab-infrastructure",
+        "serializedData": "[parameters('workbooks_66f9fcf7_518a_427c_9388_5f4ca0b35054_serializedData')]",
+        "sourceId": "azure monitor",
+        "version": "Notebook/1.0"
+      },
+      "tags": {
+        "environment": "lab",
+        "hidden-title": "wb-lab-infrastructure"
+      },
+      "type": "microsoft.insights/workbooks"
+    }
+  ],
+  "variables": {}
+}
