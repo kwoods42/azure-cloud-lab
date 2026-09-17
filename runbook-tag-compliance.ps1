@@ -23,7 +23,12 @@ Connect-AzAccount -Identity
 $Resources = Get-AzResource -ResourceGroupName $ResourceGroup
 $NonCompliant = @()
 
+$ExcludedTypes = @(
+    "Microsoft.Compute/virtualMachines/extensions"
+)
+
 foreach ($Resource in $Resources) {
+    if ($ExcludedTypes -contains $Resource.ResourceType) { continue }
     if (-not $Resource.Tags -or -not $Resource.Tags.ContainsKey($RequiredTag)) {
         $NonCompliant += [PSCustomObject]@{
             Name          = $Resource.Name
