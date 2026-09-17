@@ -760,7 +760,32 @@ future Sentinel integration.
 
 ---
 
-### 8.4 — Azure Automation Runbooks ⬜ Planned
+### 8.4 — Azure Automation Runbooks ✅
+**Completed: September 17, 2026**
+
+Deployed an Azure Automation Account with two PowerShell runbooks,
+authenticated via system-assigned managed identity with Contributor
+access to rg-lab-terraform.
+
+**Automation Account:** `aa-lab-eastus` (East US, Basic SKU)
+
+**Runbook 1 — `runbook-vm-startstop`:**
+- Accepts `Action` parameter (Start or Stop)
+- Authenticates via managed identity using `Connect-AzAccount -Identity`
+- Enumerates all VMs in the resource group and starts or stops them
+- Verified: started all six VMs and stopped all six VMs successfully
+
+**Runbook 2 — `runbook-tag-compliance`:**
+- Queries all resources in rg-lab-terraform
+- Reports any resource missing the `environment=lab` tag
+- Verified: identified 30+ non-compliant resources created before
+  Phase 6 tag policy enforcement was in place — confirming the runbook
+  works and surfacing real environment drift
+- Designed for future extension to auto-remediate by applying missing tags
+
+Both runbooks committed to repo as `.ps1` files and published in the
+Automation Account. Managed identity principal ID `1e8e684f-ec88-4888-9971-97021b00cabe`
+assigned Contributor role at resource group scope.
 ---
 
 ## Planned for Phase 9
