@@ -234,13 +234,13 @@ resource "azurerm_linux_virtual_machine" "lx01" {
 }
 
 resource "azurerm_key_vault" "lab" {
-  name                        = "kv-lab-terraform"
-  location                    = azurerm_resource_group.lab.location
-  resource_group_name         = azurerm_resource_group.lab.name
-  tenant_id                   = var.tenant_id
-  sku_name                    = "standard"
-  enable_rbac_authorization   = true
-  tags                        = { environment = "lab" }
+  name                      = "kv-lab-terraform"
+  location                  = azurerm_resource_group.lab.location
+  resource_group_name       = azurerm_resource_group.lab.name
+  tenant_id                 = var.tenant_id
+  sku_name                  = "standard"
+  enable_rbac_authorization = true
+  tags                      = { environment = "lab" }
 
   lifecycle {
     prevent_destroy = true
