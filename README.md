@@ -763,26 +763,67 @@ future Sentinel integration.
 ### 8.4 — Azure Automation Runbooks ✅
 **Completed: September 17, 2026**
 
-Deployed an Azure Automation Account with two PowerShell runbooks,
-authenticated via system-assigned managed identity with Contributor
-access to rg-lab-terraform.
+Deployed an Azure Automation Account with PowerShell runbooks authenticated
+via system-assigned managed identity, completing a full detect-and-remediate
+compliance workflow.
 
 **Automation Account:** `aa-lab-eastus` (East US, Basic SKU)
+- System-assigned managed identity: `1e8e684f-ec88-4888-9971-97021b00cabe`
+- Contributor role assigned at `rg-lab-terraform` scope
 
-**Runbook 1 — `runbook-vm-startstop`:**
-- Accepts `Action` parameter (Start or Stop)
-- Authenticates via managed identity using `Connect-AzAccount -Identity`
-- Enumerates all VMs in the resource group and starts or stops them
+**Runbook 1 — `runbook-vm-startstop.ps1`:**
+- Parameters: `Action` (Start or Stop), `ResourceGroup` (default: rg-lab-terraform)
+- Authenticates via `Connect-AzAccount -Identity`
+- Enumerates all VMs in the resource group and starts or stops them in parallel
 - Verified: started all six VMs and stopped all six VMs successfully
 
-**Runbook 2 — `runbook-tag-compliance`:**
-- Queries all resources in rg-lab-terraform
-- Reports any resource missing the `environment=lab` tag
-- Verified: identified 30+ non-compliant resources created before
-  Phase 6 tag policy enforcement was in place — confirming the runbook
-  works and surfacing real environment drift
-- Designed for future extension to auto-remediate by applying missing tags
-Both runbooks committed to repo as `.ps1` files and published in the Automation Account. Managed identity principal ID `1e8e684f-ec88-4888-9971-97021b00cabe` assigned Contributor role at resource group scope.
+**Runbook 2 — `runbook-tag-compliance.ps1`:**
+- Parameters: `ResourceGroup`, `RequiredTag`, `RequiredValue` (all defaulted)
+- Queries all resources and reports any missing the `environment=lab` tag
+- Excludes VM extensions (`Microsoft.Compute/virtualMachines/extensions`)
+  which are untaggable child resources
+- First run identified 30+ non-compliant resources across the environment
+
+**Tag remediation workflow:**
+1. Compliance runbook identified drift — 30+ resources missing `environment=lab`
+2. Phase3 Terraform resources fixed by adding `tags` blocks to `main.tf` and
+   pushing through CI/CD pipeline
+3. Key Vault, Log Analytics workspace, action group, and metric alert imported
+   into Terraform state and tagged via `terraform apply`
+4. Phase5 brownfield resources (VMs, NICs, disks, public IPs) tagged directly
+   via `az tag update` — not managed by Terraform
+5. Compliance runbook re-run confirmed: **All resources in rg-lab-terraform
+   are compliant**
+
+Both runbooks committed to repo as `.ps1` files and published in the
+Automation Account.
+
+**Troubleshooting log:**
+
+### Issue 1 — Tag Policy Blocking Automation Account Identity Assignment
+**Cause:** The `allowed-vm-skus` policy blocked assigning a managed identity
+to `vm-lab-app02`.
+**Fix:** Created a targeted policy exemption scoped to `vm-lab-app02`.
+
+### Issue 2 — Key Vault Import Failing on Permission Model Change
+**Cause:** Terraform attempted to change `enable_rbac_authorization` from
+`true` to `null` during import, which requires `Microsoft.Authorization/roleAssignments/write`
+— a permission the SP doesn't have.
+**Fix:** Added `enable_rbac_authorization = true` to the Key Vault resource
+block to match the existing Azure configuration and prevent Terraform from
+attempting to modify it.
+
+### Issue 3 — Disk Tag Names Truncated in Compliance Report
+**Cause:** The runbook output truncated long disk names in the formatted table.
+**Fix:** Retrieved full disk names via `az disk list` before tagging.
+
+### Issue 4 — VM Extension Resources Not Taggable
+**Cause:** VM extensions (`Microsoft.Compute/virtualMachines/extensions`) are
+child resources that cannot be independently tagged via the Azure Resource
+Manager tagging API.
+**Fix:** Updated the compliance runbook to exclude VM extension resource types
+from the compliance check. Parent VM tags already cover these resources from
+a governance perspective.
 
 ---
 
