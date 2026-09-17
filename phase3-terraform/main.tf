@@ -232,3 +232,62 @@ resource "azurerm_linux_virtual_machine" "lx01" {
   }
   tags = { environment = "lab" }
 }
+
+resource "azurerm_key_vault" "lab" {
+  name                        = "kv-lab-terraform"
+  location                    = azurerm_resource_group.lab.location
+  resource_group_name         = azurerm_resource_group.lab.name
+  tenant_id                   = var.tenant_id
+  sku_name                    = "standard"
+  enable_rbac_authorization   = true
+  tags                        = { environment = "lab" }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azurerm_log_analytics_workspace" "lab" {
+  name                = "law-lab-eastus"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_monitor_action_group" "lab" {
+  name                = "ag-lab-alerts"
+  resource_group_name = azurerm_resource_group.lab.name
+  short_name          = "lab-alerts"
+  tags                = { environment = "lab" }
+
+  email_receiver {
+    name          = "admin"
+    email_address = "kev.woods42@gmail.com"
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "vm_unavailable" {
+  name                = "alert-vm-unavailable"
+  resource_group_name = azurerm_resource_group.lab.name
+  scopes              = ["/subscriptions/4ea2ed32-c912-439e-a987-900507dd3c49/resourceGroups/rg-lab-terraform/providers/Microsoft.Compute/virtualMachines/vm-lab-dc01-tf"]
+  severity            = 2
+  window_size         = "PT5M"
+  frequency           = "PT1M"
+  description         = "Alert when VM CPU drops to zero - possible unplanned deallocation"
+  auto_mitigate       = false
+  tags                = { environment = "lab" }
+
+  criteria {
+    metric_namespace = "Microsoft.Compute/virtualMachines"
+    metric_name      = "Percentage CPU"
+    aggregation      = "Average"
+    operator         = "LessThan"
+    threshold        = 1
+  }
+
+  action {
+    action_group_id = "/subscriptions/4ea2ed32-c912-439e-a987-900507dd3c49/resourceGroups/rg-lab-terraform/providers/microsoft.insights/actionGroups/ag-lab-alerts"
+  }
+}
