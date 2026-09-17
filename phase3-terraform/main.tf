@@ -39,6 +39,7 @@ data "azurerm_key_vault_secret" "admin_password" {
 resource "azurerm_resource_group" "lab" {
   name     = "rg-lab-terraform"
   location = "East US"
+  tags     = { environment = "lab" }
 }
 
 resource "azurerm_virtual_network" "lab" {
@@ -46,6 +47,7 @@ resource "azurerm_virtual_network" "lab" {
   location            = azurerm_resource_group.lab.location
   resource_group_name = azurerm_resource_group.lab.name
   address_space       = ["10.20.0.0/16"]
+  tags                = { environment = "lab" }
 }
 
 resource "azurerm_subnet" "servers" {
@@ -148,6 +150,7 @@ resource "azurerm_network_interface" "dc01" {
     subnet_id                     = azurerm_subnet.servers.id
     private_ip_address_allocation = "Dynamic"
   }
+  tags = { environment = "lab" }
 }
 
 resource "azurerm_network_interface_security_group_association" "dc01" {
@@ -177,6 +180,7 @@ resource "azurerm_windows_virtual_machine" "dc01" {
     version   = "latest"
   }
   vm_agent_platform_updates_enabled = true
+  tags                              = { environment = "lab" }
 }
 
 resource "azurerm_network_interface" "lx01" {
@@ -189,6 +193,7 @@ resource "azurerm_network_interface" "lx01" {
     subnet_id                     = azurerm_subnet.servers.id
     private_ip_address_allocation = "Dynamic"
   }
+  tags = { environment = "lab" }
 }
 
 resource "azurerm_network_interface_security_group_association" "lx01" {
@@ -225,4 +230,5 @@ resource "azurerm_linux_virtual_machine" "lx01" {
     sku       = "22_04-lts-gen2"
     version   = "latest"
   }
+  tags = { environment = "lab" }
 }
