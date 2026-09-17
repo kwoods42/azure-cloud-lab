@@ -782,10 +782,8 @@ access to rg-lab-terraform.
   Phase 6 tag policy enforcement was in place — confirming the runbook
   works and surfacing real environment drift
 - Designed for future extension to auto-remediate by applying missing tags
+Both runbooks committed to repo as `.ps1` files and published in the Automation Account. Managed identity principal ID `1e8e684f-ec88-4888-9971-97021b00cabe` assigned Contributor role at resource group scope.
 
-Both runbooks committed to repo as `.ps1` files and published in the
-Automation Account. Managed identity principal ID `1e8e684f-ec88-4888-9971-97021b00cabe`
-assigned Contributor role at resource group scope.
 ---
 
 ## Planned for Phase 9
