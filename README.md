@@ -293,7 +293,7 @@ monitoring, and compliance.
 - Deployed Log Analytics workspace: `law-lab-eastus` (30-day retention, East US)
 - Connected Defender for Cloud to `law-lab-eastus` as the default workspace
 - Configured email security alerts via Defender for Cloud portal
-- Created Azure Monitor action group: `ag-lab-alerts` (email: kev.woods42@gmail.com)
+- Created Azure Monitor action group: `ag-lab-alerts` (email: lab administrator)
 - Created VM CPU alert rule on `vm-lab-dc01-tf` — triggers when CPU < 1%
   (detects unplanned deallocation)
 
@@ -954,7 +954,7 @@ Attempted to configure Azure PIM for just-in-time role activation on
 
 PIM for Azure resources requires Entra ID P2 licenses in the same tenant
 as the Azure subscription. The lab Azure subscription is linked to the
-default directory (`kev.woods42@gmail.com` — personal Microsoft account
+default directory (personal Microsoft account
 tenant), which does not support Entra ID P2 license purchases. The M365
 Business Basic trial and Entra ID P2 trial were activated under
 `TBGWorks.onmicrosoft.com` (a work/school tenant), but the Azure
