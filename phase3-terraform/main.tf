@@ -291,3 +291,89 @@ resource "azurerm_monitor_metric_alert" "vm_unavailable" {
     action_group_id = "/subscriptions/4ea2ed32-c912-439e-a987-900507dd3c49/resourceGroups/rg-lab-terraform/providers/microsoft.insights/actionGroups/ag-lab-alerts"
   }
 }
+
+resource "azurerm_private_dns_zone" "lab_local" {
+  name                = "lab.local"
+  resource_group_name = azurerm_resource_group.lab.name
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "lab_local" {
+  name                  = "link-lab-local-vnet"
+  resource_group_name   = azurerm_resource_group.lab.name
+  private_dns_zone_name = azurerm_private_dns_zone.lab_local.name
+  virtual_network_id    = azurerm_virtual_network.lab.id
+  registration_enabled  = false
+  tags                  = { environment = "lab" }
+}
+
+resource "azurerm_private_dns_a_record" "dc02" {
+  name                = "vm-lab-dc02"
+  zone_name           = azurerm_private_dns_zone.lab_local.name
+  resource_group_name = azurerm_resource_group.lab.name
+  ttl                 = 3600
+  records             = ["10.20.1.6"]
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_private_dns_a_record" "fs01" {
+  name                = "vm-lab-fs01"
+  zone_name           = azurerm_private_dns_zone.lab_local.name
+  resource_group_name = azurerm_resource_group.lab.name
+  ttl                 = 3600
+  records             = ["10.20.1.7"]
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_private_dns_a_record" "app01" {
+  name                = "vm-lab-app01"
+  zone_name           = azurerm_private_dns_zone.lab_local.name
+  resource_group_name = azurerm_resource_group.lab.name
+  ttl                 = 3600
+  records             = ["10.20.1.8"]
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_private_dns_a_record" "app02" {
+  name                = "vm-lab-app02"
+  zone_name           = azurerm_private_dns_zone.lab_local.name
+  resource_group_name = azurerm_resource_group.lab.name
+  ttl                 = 3600
+  records             = ["10.20.1.9"]
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_private_dns_zone" "keyvault" {
+  name                = "privatelink.vaultcore.azure.net"
+  resource_group_name = azurerm_resource_group.lab.name
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "keyvault" {
+  name                  = "link-lab-keyvault-vnet"
+  resource_group_name   = azurerm_resource_group.lab.name
+  private_dns_zone_name = azurerm_private_dns_zone.keyvault.name
+  virtual_network_id    = azurerm_virtual_network.lab.id
+  registration_enabled  = false
+  tags                  = { environment = "lab" }
+}
+
+resource "azurerm_private_endpoint" "keyvault" {
+  name                = "pe-lab-keyvault"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  subnet_id           = azurerm_subnet.servers.id
+  tags                = { environment = "lab" }
+
+  private_service_connection {
+    name                           = "conn-lab-keyvault"
+    private_connection_resource_id = azurerm_key_vault.lab.id
+    is_manual_connection           = false
+    subresource_names              = ["vault"]
+  }
+
+  private_dns_zone_group {
+    name                 = "keyvault-dns-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.keyvault.id]
+  }
+}
