@@ -57,37 +57,6 @@ resource "azurerm_subnet" "servers" {
   address_prefixes     = ["10.20.1.0/24"]
 }
 
-resource "azurerm_subnet" "bastion" {
-  name                 = "AzureBastionSubnet"
-  resource_group_name  = azurerm_resource_group.lab.name
-  virtual_network_name = azurerm_virtual_network.lab.name
-  address_prefixes     = ["10.20.2.0/26"]
-}
-
-resource "azurerm_public_ip" "bastion" {
-  name                = "pip-lab-bastion"
-  location            = azurerm_resource_group.lab.location
-  resource_group_name = azurerm_resource_group.lab.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-  tags                = { environment = "lab" }
-}
-
-resource "azurerm_bastion_host" "lab" {
-  name                = "bastion-lab"
-  location            = azurerm_resource_group.lab.location
-  resource_group_name = azurerm_resource_group.lab.name
-  sku                 = "Standard"
-  tunneling_enabled   = true
-  tags                = { environment = "lab" }
-
-  ip_configuration {
-    name                 = "bastion_ip_config"
-    subnet_id            = azurerm_subnet.bastion.id
-    public_ip_address_id = azurerm_public_ip.bastion.id
-  }
-}
-
 
 resource "azurerm_network_security_group" "lab" {
   name                = "nsg-lab-servers"
@@ -376,4 +345,62 @@ resource "azurerm_private_endpoint" "keyvault" {
     name                 = "keyvault-dns-group"
     private_dns_zone_ids = [azurerm_private_dns_zone.keyvault.id]
   }
+}
+
+resource "azurerm_virtual_network" "hub" {
+  name                = "vnet-lab-hub"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  address_space       = ["10.30.0.0/16"]
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_subnet" "bastion_hub" {
+  name                            = "AzureBastionSubnet"
+  resource_group_name             = azurerm_resource_group.lab.name
+  virtual_network_name            = azurerm_virtual_network.hub.name
+  address_prefixes                = ["10.30.1.0/26"]
+  default_outbound_access_enabled = false
+}
+
+resource "azurerm_public_ip" "bastion_hub" {
+  name                = "pip-hub-bastion"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = { environment = "lab" }
+}
+
+resource "azurerm_bastion_host" "hub" {
+  name                = "bastion-hub"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  sku                 = "Standard"
+  tunneling_enabled   = true
+  tags                = { environment = "lab" }
+
+  ip_configuration {
+    name                 = "bastion_ip_config"
+    subnet_id            = azurerm_subnet.bastion_hub.id
+    public_ip_address_id = azurerm_public_ip.bastion_hub.id
+  }
+}
+
+resource "azurerm_virtual_network_peering" "hub_to_spoke" {
+  name                         = "peer-hub-to-spoke"
+  resource_group_name          = azurerm_resource_group.lab.name
+  virtual_network_name         = azurerm_virtual_network.hub.name
+  remote_virtual_network_id    = azurerm_virtual_network.lab.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
+}
+
+resource "azurerm_virtual_network_peering" "spoke_to_hub" {
+  name                         = "peer-spoke-to-hub"
+  resource_group_name          = azurerm_resource_group.lab.name
+  virtual_network_name         = azurerm_virtual_network.lab.name
+  remote_virtual_network_id    = azurerm_virtual_network.hub.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
 }
