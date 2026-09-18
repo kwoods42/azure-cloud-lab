@@ -853,5 +853,42 @@ for both the AD environment and Key Vault private endpoint access.
 All resources imported into Terraform state and managed via `phase3-terraform`.
 CI/CD pipeline applied cleanly with no changes after import.
 
-### 9.2 — VNet Peering / Hub-Spoke Topology ⬜ Planned
+### 9.2 — VNet Peering / Hub-Spoke Topology ✅
+**Completed: September 18, 2026**
+
+Redesigned the network topology from a flat single-VNet model to a hub-spoke
+architecture, migrating Bastion to a dedicated hub VNet and peering it to the
+existing spoke VNet.
+
+**Hub VNet — `vnet-lab-hub` (10.30.0.0/16):**
+- Created with dedicated `AzureBastionSubnet` (10.30.1.0/26)
+- Houses shared network services — Bastion and future firewall/NVA resources
+- Peered to spoke VNet with forwarded traffic enabled
+
+**Spoke VNet — `vnet-lab-terraform` (10.20.0.0/16):**
+- Existing workload VNet — all lab VMs remain here
+- Peered to hub VNet bidirectionally
+- No longer contains Bastion subnet
+
+**Bastion migration:**
+- Deployed `bastion-hub` (Standard SKU, tunneling enabled) in hub VNet
+- Public IP: `pip-hub-bastion` (20.102.62.64)
+- Decommissioned `bastion-lab` and `pip-lab-bastion` from spoke VNet
+- Portal confirmed `bastion-hub` as active Bastion for all spoke VMs
+- VM reachability verified via `az vm run-command` — dc02 responded to
+  hostname query through hub Bastion routing
+
+**VNet Peerings:**
+- `peer-hub-to-spoke` — hub → spoke, virtual network access and forwarded traffic enabled
+- `peer-spoke-to-hub` — spoke → hub, virtual network access and forwarded traffic enabled
+
+All resources managed in Terraform. CI/CD pipeline ran clean after import.
+
+**Known limitation:** Interactive Bastion RDP/SSH sessions from Ouroboros6
+(Zorin OS Linux) remain non-functional due to an unresolved WebSocket/RDP
+proxy compatibility issue — consistent with the behavior documented in Phase 6.
+All VM administration performed via `az vm run-command` as a workaround.
+
+### 9.3 — Azure Update Manager ⬜ Planned
+### 9.4 — Privileged Identity Management (PIM) ⬜ Planned
 ### 9.3 — Privileged Identity Management (PIM) ⬜ Planned
