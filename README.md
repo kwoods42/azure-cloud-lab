@@ -826,8 +826,32 @@ from the compliance check. Parent VM tags already cover these resources from
 a governance perspective.
 
 ---
+## Phase 9 — Networking, DNS & Identity
+**Started: September 2026**
 
-## Planned for Phase 9
-- Azure DNS private zones
-- VNet peering / hub-spoke topology
-- Privileged Identity Management (PIM)
+### 9.1 — Azure DNS Private Zones ✅
+**Completed: September 18, 2026**
+
+Deployed Azure Private DNS zones to provide name resolution within the VNet
+for both the AD environment and Key Vault private endpoint access.
+
+**Private DNS Zone — `lab.local`:**
+- Created and linked to `vnet-lab-terraform` (registration disabled)
+- A records added for all four AD environment VMs:
+  - `vm-lab-dc02` → 10.20.1.6
+  - `vm-lab-fs01` → 10.20.1.7
+  - `vm-lab-app01` → 10.20.1.8
+  - `vm-lab-app02` → 10.20.1.9
+
+**Private DNS Zone — `privatelink.vaultcore.azure.net`:**
+- Created and linked to `vnet-lab-terraform`
+- Private endpoint `pe-lab-keyvault` deployed on `snet-servers` (10.20.1.10)
+- Key Vault now resolves privately within the VNet — no public internet path
+  required from lab VMs
+- DNS zone group attached to private endpoint for automatic record management
+
+All resources imported into Terraform state and managed via `phase3-terraform`.
+CI/CD pipeline applied cleanly with no changes after import.
+
+### 9.2 — VNet Peering / Hub-Spoke Topology ⬜ Planned
+### 9.3 — Privileged Identity Management (PIM) ⬜ Planned
