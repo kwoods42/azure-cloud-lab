@@ -891,4 +891,3 @@ All VM administration performed via `az vm run-command` as a workaround.
 
 ### 9.3 — Azure Update Manager ⬜ Planned
 ### 9.4 — Privileged Identity Management (PIM) ⬜ Planned
-### 9.3 — Privileged Identity Management (PIM) ⬜ Planned
