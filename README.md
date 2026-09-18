@@ -946,7 +946,7 @@ Attempted to configure Azure PIM for just-in-time role activation on
   than permanent for lab admin users
 - Require MFA and justification on activation
 - Set maximum activation duration to 4 hours
-- Configure email notification to `kev.woods42@gmail.com` on activation
+- Configure email notification to lab administrator on activation
 - Set up quarterly access review for Contributor assignments
 - Enable PIM alerts for permanent assignments and unused eligible roles
 
