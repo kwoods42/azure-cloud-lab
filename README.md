@@ -935,4 +935,40 @@ because VMs need `bypassPlatformSafetyChecksOnUserSchedule: true` set before
 they can be assigned to a customer-managed schedule.
 **Fix:** Updated all three VMs via `az rest` PATCH to add the bypass flag to
 `automaticByPlatformSettings`.
-### 9.4 — Privileged Identity Management (PIM) ⬜ Planned
+### 9.4 — Privileged Identity Management (PIM) ⚠️ Blocked
+**Attempted: September 18, 2026**
+
+Attempted to configure Azure PIM for just-in-time role activation on
+`rg-lab-terraform`, targeting the `Contributor` role for `lab-admin`.
+
+**Intended configuration:**
+- Make `Contributor` on `rg-lab-terraform` an eligible assignment rather
+  than permanent for lab admin users
+- Require MFA and justification on activation
+- Set maximum activation duration to 4 hours
+- Configure email notification to `kev.woods42@gmail.com` on activation
+- Set up quarterly access review for Contributor assignments
+- Enable PIM alerts for permanent assignments and unused eligible roles
+
+**Blocker — Tenant/Subscription mismatch:**
+
+PIM for Azure resources requires Entra ID P2 licenses in the same tenant
+as the Azure subscription. The lab Azure subscription is linked to the
+default directory (`kev.woods42@gmail.com` — personal Microsoft account
+tenant), which does not support Entra ID P2 license purchases. The M365
+Business Basic trial and Entra ID P2 trial were activated under
+`TBGWorks.onmicrosoft.com` (a work/school tenant), but the Azure
+subscription cannot be managed from that tenant without a subscription
+transfer.
+
+**Resolution path:** Either transfer the subscription to TBGWorks tenant
+or create a new Azure subscription under TBGWorks with P2 already licensed.
+This is a real-world architecture consideration — in enterprise environments,
+Azure subscriptions and Entra ID tenants are always aligned to avoid exactly
+this kind of licensing and governance gap.
+
+**What was verified:**
+- PIM blade is accessible in the Portal
+- Entra ID P2 trial successfully activated in TBGWorks tenant (1/25 assigned)
+- PIM role structure and Azure resources onboarding flow reviewed
+- Tenant/subscription alignment documented as a prerequisite for PIM deployment
