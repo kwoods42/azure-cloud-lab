@@ -889,5 +889,50 @@ All resources managed in Terraform. CI/CD pipeline ran clean after import.
 proxy compatibility issue — consistent with the behavior documented in Phase 6.
 All VM administration performed via `az vm run-command` as a workaround.
 
-### 9.3 — Azure Update Manager ⬜ Planned
+### 9.3 — Azure Update Manager ✅
+**Completed: September 18, 2026**
+
+Deployed Azure Update Manager across the lab VM fleet, providing centralized
+patch visibility and a scheduled maintenance window for automated patching.
+
+**Maintenance Configuration — `mc-lab-windows-updates`:**
+- Scope: InGuestPatch (OS-level patching)
+- Schedule: Monthly, third Tuesday, 8:00 PM Eastern, 2-hour window
+- Windows: Critical, Security, and Update Rollup classifications
+- Linux: Critical and Security classifications
+- Reboot setting: IfRequired
+- Patch mode: AutomaticByPlatform with bypassPlatformSafetyChecksOnUserSchedule
+
+**VMs enrolled (dc02, fs01, app02):**
+- Patch mode set to `AutomaticByPlatform`
+- Assessment mode set to `AutomaticByPlatform`
+- Maintenance configuration assigned via `az maintenance assignment create`
+
+**Assessment results:**
+- vm-lab-dc02: 3 pending updates (2 security, 1 other)
+- vm-lab-app02: 3 pending updates (2 security, 1 other)
+- vm-lab-fs01: assessment pending
+- Remaining VMs (dc01-tf, lx01-tf, app01): periodic assessment not enabled —
+  these are baseline/brownfield VMs outside the maintenance scope
+
+**Update Manager dashboard confirmed:**
+- 6 machines visible
+- 3 on Customer Managed Schedule
+- Pending Windows updates surfaced with classification breakdown
+- No pending Linux updates
+
+**Troubleshooting log:**
+
+### Issue 1 — Maintenance CLI Extension Parameter Syntax Broken
+**Cause:** The `az maintenance configuration create` CLI extension is in preview
+and broke parameter parsing for `--install-patches-windows-parameters`.
+**Fix:** Used `az rest` with the ARM API directly to create the maintenance
+configuration.
+
+### Issue 2 — bypassPlatformSafetyChecksOnUserSchedule Required
+**Cause:** Maintenance assignment failed with `UnsupportedResourceOperation`
+because VMs need `bypassPlatformSafetyChecksOnUserSchedule: true` set before
+they can be assigned to a customer-managed schedule.
+**Fix:** Updated all three VMs via `az rest` PATCH to add the bypass flag to
+`automaticByPlatformSettings`.
 ### 9.4 — Privileged Identity Management (PIM) ⬜ Planned
