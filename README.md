@@ -972,3 +972,33 @@ this kind of licensing and governance gap.
 - Entra ID P2 trial successfully activated in TBGWorks tenant (1/25 assigned)
 - PIM role structure and Azure resources onboarding flow reviewed
 - Tenant/subscription alignment documented as a prerequisite for PIM deployment
+---
+
+## Phase 10 — Disaster Recovery Exercise
+**Planned**
+
+Structured DR exercise across three failure scenarios, validating the backup
+and recovery infrastructure built in Phase 7 and testing operational runbooks
+under simulated incident conditions.
+
+### 10.0 — Pre-Exercise Verification ⬜ Planned
+Verify all recovery points are valid and current before beginning DR scenarios.
+Confirm Recovery Services Vault health, backup job status, and restore point
+availability for all enrolled VMs.
+
+### 10.1 — Scenario: Accidental Resource Deletion ⬜ Planned
+A Terraform destroy targeting the wrong workspace deletes critical network
+resources — servers subnet, NSG, and VM NICs. Recovery via Terraform state
+restore and CI/CD pipeline re-apply. Tests infrastructure-as-code as a
+recovery tool.
+
+### 10.2 — Scenario: Domain Controller Corruption ⬜ Planned
+OS-level corruption on vm-lab-dc02 renders the domain unavailable, blocking
+authentication for all domain-joined VMs. Recovery via Recovery Services Vault
+restore and authoritative AD restore. Tests Azure Backup restore workflow.
+
+### 10.3 — Scenario: Ransomware Attack on File Server ⬜ Planned
+Threat actor compromises vm-lab-fs01, encrypts file share contents, and
+deletes shadow copies. Recovery involves VM isolation, clean restore from
+backup, AD integrity validation, and incident timeline documentation. Most
+complex scenario — tests the full IR and recovery workflow.
