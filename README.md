@@ -974,17 +974,29 @@ this kind of licensing and governance gap.
 - Tenant/subscription alignment documented as a prerequisite for PIM deployment
 ---
 
-## Phase 10 — Disaster Recovery Exercise
-**Planned**
+## Phase 10 — Disaster Recovery Exercise ✅
+**Completed: September 20, 2026**
 
 Structured DR exercise across three failure scenarios, validating the backup
 and recovery infrastructure built in Phase 7 and testing operational runbooks
 under simulated incident conditions.
 
-### 10.0 — Pre-Exercise Verification ⬜ Planned
-Verify all recovery points are valid and current before beginning DR scenarios.
-Confirm Recovery Services Vault health, backup job status, and restore point
-availability for all enrolled VMs.
+### 10.0 — Pre-Exercise Verification ✅ Complete
+
+Verified all six VMs have valid recovery points in rsv-lab-eastus before beginning DR scenarios.
+
+| VM | Recovery Point | Timestamp (UTC) | Type |
+|---|---|---|---|
+| vm-lab-dc02 | 930080468930574538 | 2026-09-20 00:56:12 | CrashConsistent |
+| vm-lab-fs01 | 930067525825553164 | 2026-09-20 00:56:09 | CrashConsistent |
+| vm-lab-app01 | 930063802336811598 | 2026-09-20 00:53:01 | CrashConsistent |
+| vm-lab-app02 | 930080340178650937 | 2026-09-20 00:53:57 | CrashConsistent |
+| vm-lab-dc01-tf | 930064121157849026 | 2026-09-20 00:54:47 | CrashConsistent |
+| vm-lab-lx01-tf | 930068444255577712 | 2026-09-20 00:51:48 | CrashConsistent |
+
+All recovery points captured within the same overnight backup window. CrashConsistent
+type noted — no VSS quiescing, equivalent to a clean power-off snapshot. Relevant for
+DC restore procedure in 10.2.
 
 ### 10.1 — Scenario: Accidental Resource Deletion ✅ Complete
 
