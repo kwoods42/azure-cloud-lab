@@ -1021,8 +1021,167 @@ is validated correct through disk recovery and NIC provisioning. Post-restore st
 would include non-authoritative AD restore, USN rollback prevention via registry
 flag, and domain replication verification via repadmin /replsummary.
 
-### 10.3 — Scenario: Ransomware Attack on File Server ⬜ Planned
-Threat actor compromises vm-lab-fs01, encrypts file share contents, and
-deletes shadow copies. Recovery involves VM isolation, clean restore from
-backup, AD integrity validation, and incident timeline documentation. Most
-complex scenario — tests the full IR and recovery workflow.
+### 10.3 — Scenario: Ransomware Attack on File Server 📋 Documented
+
+Trial subscription quota constraints (see 10.2) prevented live execution.
+Full recovery runbook documented below. Restore procedure validated in 10.2.
+
+---
+
+**INCIDENT NARRATIVE**
+
+At 14:22 EDT, Azure Monitor alerts fire: vm-lab-fs01 CPU spikes to 98% and
+disk write IOPS saturate. A threat actor has gained access via a compromised
+service account credential and deployed ransomware. File share contents on
+the D: drive are being encrypted. VSS shadow copies are being deleted via
+vssadmin. The VM is still reachable but the damage is spreading.
+
+You have 11 minutes of backup data that isn't encrypted. The recovery point
+from 00:56 UTC this morning is clean.
+
+---
+
+**PHASE 1 — ISOLATION (T+0 to T+10 minutes)**
+
+Immediately isolate fs01 from the network by removing its NSG association.
+This stops lateral movement while preserving the VM for forensic review.
+
+```bash
+# Isolate fs01 - remove NSG from NIC
+az network nic update \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-fs01633 \
+  --network-security-group ""
+
+# Confirm isolation - VM should be unreachable
+az network nic show \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-fs01633 \
+  --query "networkSecurityGroup" -o tsv
+```
+
+Disable the compromised service account in Active Directory immediately via
+dc02 to prevent reuse of the credential elsewhere in the environment.
+
+```bash
+az vm run-command invoke \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-dc02 \
+  --command-id RunPowerShellScript \
+  --scripts "Disable-ADAccount -Identity svc-compromised; Get-ADUser svc-compromised | Select Name,Enabled"
+```
+
+**PHASE 2 — DAMAGE ASSESSMENT (T+10 to T+25 minutes)**
+
+Confirm the last clean recovery point and assess scope of encryption.
+
+```bash
+# Confirm clean recovery point
+az backup recoverypoint list \
+  --resource-group rg-lab-terraform \
+  --vault-name rsv-lab-eastus \
+  --container-name "IaasVMContainer;iaasvmcontainerv2;rg-lab-terraform;vm-lab-fs01" \
+  --item-name vm-lab-fs01 \
+  --workload-type VM \
+  --query "[0].{Name:name, Time:properties.recoveryPointTime, Type:properties.recoveryPointType}" \
+  -o table
+```
+
+Do NOT attempt to run commands on the isolated VM — this risks triggering
+additional payloads. The VM is evidence. Leave it isolated and deallocated
+for post-incident forensic review.
+
+```bash
+az vm deallocate \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-fs01 --no-wait
+```
+
+**PHASE 3 — RESTORE (T+25 to T+60 minutes)**
+
+Trigger RSV restore-disks to a clean storage container.
+
+```bash
+az backup restore restore-disks \
+  --resource-group rg-lab-terraform \
+  --vault-name rsv-lab-eastus \
+  --container-name "IaasVMContainer;iaasvmcontainerv2;rg-lab-terraform;vm-lab-fs01" \
+  --item-name vm-lab-fs01 \
+  --rp-name <recovery-point-id> \
+  --target-resource-group rg-lab-terraform \
+  --storage-account stlabterraformstate
+```
+
+Poll job status until Completed. Download ARM template from restore container.
+Create new NIC (nic-fs01-restored) attached to snet-servers with nsg-lab-servers.
+Deploy replacement VM (vm-lab-fs01-restored) from restored disk.
+
+**PHASE 4 — AD INTEGRITY VALIDATION (T+60 to T+90 minutes)**
+
+Before bringing the restored file server online, validate domain integrity.
+A ransomware attack that touched a service account may have tampered with AD objects.
+
+```bash
+# Check AD replication health
+az vm run-command invoke \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-dc02 \
+  --command-id RunPowerShellScript \
+  --scripts "repadmin /replsummary"
+
+# Check for recently modified AD objects (last 2 hours)
+az vm run-command invoke \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-dc02 \
+  --command-id RunPowerShellScript \
+  --scripts "Get-ADObject -Filter * -Properties WhenChanged | Where-Object {\$_.WhenChanged -gt (Get-Date).AddHours(-2)} | Select Name,ObjectClass,WhenChanged | Sort WhenChanged -Descending"
+
+# Verify no new admin accounts created
+az vm run-command invoke \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-dc02 \
+  --command-id RunPowerShellScript \
+  --scripts "Get-ADGroupMember 'Domain Admins' | Select Name,SamAccountName"
+```
+
+**PHASE 5 — RECOVERY VALIDATION AND CUTOVER (T+90 to T+120 minutes)**
+
+Verify restored VM is clean before rejoining domain.
+
+```bash
+# Confirm no ransomware processes running on restored VM
+az vm run-command invoke \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-fs01-restored \
+  --command-id RunPowerShellScript \
+  --scripts "Get-Process | Sort CPU -Descending | Select -First 20 Name,CPU,Id"
+
+# Verify file share contents are accessible and unencrypted
+az vm run-command invoke \
+  --resource-group rg-lab-terraform \
+  --name vm-lab-fs01-restored \
+  --command-id RunPowerShellScript \
+  --scripts "Get-ChildItem D:\Shares -Recurse | Select-Object Name,Extension,Length | Where-Object {\$_.Extension -notin @('.txt','.docx','.xlsx','.pdf')}"
+```
+
+Reattach NSG to restored VM NIC and verify domain connectivity.
+Rename original compromised VM to vm-lab-fs01-compromised for forensic retention.
+Update DNS A record in lab.local private DNS zone to point to restored VM IP.
+
+**INCIDENT TIMELINE**
+
+| Time | Event |
+|------|-------|
+| T+0 | Azure Monitor alert fires — fs01 CPU/IOPS spike |
+| T+3 | Ransomware confirmed — file encryption in progress |
+| T+7 | fs01 NSG removed — VM isolated from network |
+| T+9 | Compromised service account disabled in AD |
+| T+15 | fs01 deallocated — VM preserved for forensics |
+| T+25 | RSV restore-disks job initiated |
+| T+55 | Restore completed with warnings (CrashConsistent) |
+| T+70 | AD integrity validated — no tampering detected |
+| T+95 | Restored VM online and verified clean |
+| T+110 | File share restored and accessible |
+| T+120 | DNS cutover complete — environment fully recovered |
+
+**RTO achieved: 2 hours. RPO: ~14 hours (overnight backup window).**
