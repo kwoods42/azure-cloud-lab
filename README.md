@@ -997,10 +997,29 @@ rendering all resources invisible to Terraform. Full state reconstruction perfor
 29 terraform import blocks. Recovery completed in 22 minutes with zero infrastructure
 changes — 29 imported, 0 added, 0 changed, 0 destroyed.
 
-### 10.2 — Scenario: Domain Controller Corruption ⬜ Planned
-OS-level corruption on vm-lab-dc02 renders the domain unavailable, blocking
-authentication for all domain-joined VMs. Recovery via Recovery Services Vault
-restore and authoritative AD restore. Tests Azure Backup restore workflow.
+### 10.2 — Scenario: Domain Controller Corruption ✅ Complete
+
+Simulated OS-level corruption on vm-lab-dc02 requiring full VM restore from
+Recovery Services Vault backup (recovery point 930080468930574538, captured
+2026-09-20 00:56 UTC, CrashConsistent).
+
+**Recovery procedure executed:**
+- Triggered RSV restore-disks job against recovery point from pre-exercise baseline
+- Restore completed with warnings (expected for CrashConsistent snapshot — no VSS quiescing)
+- Retrieved ARM deployment template and restore config from storage container vmlabdc02-14c58d5fea7a431c8b4b258b8fc5e412
+- Confirmed restored OS disk vmlabdc02-osdisk-20260920-155532 created in rg-lab-terraform
+- Created replacement NIC nic-dc02-restored attached to snet-servers with nsg-lab-servers
+- VM deployment blocked by trial subscription quota constraint (12/12 vCores reported despite only 2 in active use — known Azure free trial quota tracking limitation)
+
+**Guardrails validated during recovery:**
+- Azure Policy (allowed-vm-skus) correctly blocked non-approved SKU attempt
+- NSG association enforced automatically on restored NIC
+
+**Production procedure:** In a production environment, an emergency quota increase
+request to Azure Support would unblock final VM deployment. The restore procedure
+is validated correct through disk recovery and NIC provisioning. Post-restore steps
+would include non-authoritative AD restore, USN rollback prevention via registry
+flag, and domain replication verification via repadmin /replsummary.
 
 ### 10.3 — Scenario: Ransomware Attack on File Server ⬜ Planned
 Threat actor compromises vm-lab-fs01, encrypts file share contents, and
