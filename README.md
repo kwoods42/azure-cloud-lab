@@ -986,7 +986,7 @@ Verify all recovery points are valid and current before beginning DR scenarios.
 Confirm Recovery Services Vault health, backup job status, and restore point
 availability for all enrolled VMs.
 
-### 10.1 — Scenario: Accidental Resource Deletion ⬜ Planned
+### 10.1 — Scenario: Accidental Resource Deletion ✅ Complete
 A Terraform destroy targeting the wrong workspace deletes critical network
 resources — servers subnet, NSG, and VM NICs. Recovery via Terraform state
 restore and CI/CD pipeline re-apply. Tests infrastructure-as-code as a
