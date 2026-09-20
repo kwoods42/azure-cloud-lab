@@ -987,10 +987,15 @@ Confirm Recovery Services Vault health, backup job status, and restore point
 availability for all enrolled VMs.
 
 ### 10.1 — Scenario: Accidental Resource Deletion ✅ Complete
-A Terraform destroy targeting the wrong workspace deletes critical network
-resources — servers subnet, NSG, and VM NICs. Recovery via Terraform state
-restore and CI/CD pipeline re-apply. Tests infrastructure-as-code as a
-recovery tool.
+
+**10.1a — NSG Destruction Attempt:** Simulated junior admin error targeting nsg-lab-servers.
+Azure dependency protection prevented full destruction — the environment self-protected.
+Confirmed guardrails working as designed.
+
+**10.1b — Terraform State Destruction:** State blobs deleted from stlabterraformstate,
+rendering all resources invisible to Terraform. Full state reconstruction performed via
+29 terraform import blocks. Recovery completed in 22 minutes with zero infrastructure
+changes — 29 imported, 0 added, 0 changed, 0 destroyed.
 
 ### 10.2 — Scenario: Domain Controller Corruption ⬜ Planned
 OS-level corruption on vm-lab-dc02 renders the domain unavailable, blocking
