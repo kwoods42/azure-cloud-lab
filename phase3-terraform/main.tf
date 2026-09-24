@@ -143,8 +143,7 @@ resource "azurerm_windows_virtual_machine" "dc01" {
     sku       = "2022-datacenter-g2"
     version   = "latest"
   }
-  vm_agent_platform_updates_enabled = true
-  tags                              = { environment = "lab" }
+  tags = { environment = "lab" }
 }
 
 resource "azurerm_network_interface" "lx01" {
