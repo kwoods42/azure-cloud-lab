@@ -1197,3 +1197,49 @@ Update DNS A record in lab.local private DNS zone to point to restored VM IP.
 | T+120 | DNS cutover complete — environment fully recovered |
 
 **RTO achieved: 2 hours. RPO: ~14 hours (overnight backup window).**
+
+
+## Phase 11 — Environment Rebuild & Hybrid Identity
+**Started: September 24, 2026**
+
+### 11.1 — Subscription Migration & Environment Rebuild ✅ Complete
+**Completed: September 24, 2026**
+
+Migrated from a personal Microsoft account-linked Azure subscription to a
+subscription under the TBGWorks.onmicrosoft.com tenant, aligning Azure and
+Entra ID for hybrid identity work in Phase 11.2+.
+
+**Changes made during rebuild:**
+- New subscription: bfcdf712-b22e-445b-99cf-f326a26fa4a3 (TBGWorks tenant)
+- New service principal: sp-terraform-lab (appId: 952ecd88-606b-49ac-a24d-ce8fc55d8768)
+- Storage account renamed: stlabterraformstate → stlabtfstate2026 (global name conflict)
+- Key Vault renamed: kv-lab-terraform → kv-lab2-terraform (soft-delete name reservation from old subscription)
+- Provider upgraded: azurerm ~> 3.0 → ~> 4.0
+- Removed deprecated lifecycle workarounds (ignore_changes on ssh key, prevent_destroy on Key Vault)
+- Fixed hardcoded subscription IDs — now use var.subscription_id throughout
+- Alert email updated to KevinWoods@TBGWorks.onmicrosoft.com
+- AllowVnetInbound NSG rule added (was missing from phase3 config)
+- Action group ID now references resource directly instead of hardcoded ARM ID
+- depends_on added to metric alert to prevent race condition with VM creation
+
+**Rebuild executed via CI/CD pipeline — 29 resources applied, 0 manual portal steps for phase3 infrastructure.**
+
+**Troubleshooting log:**
+
+#### Issue 1 — Backend Storage Account Bootstrap
+Terraform cannot create its own state backend. Manually created rg-lab-terraform
+and stlabtfstate2026 via portal before first pipeline run, then imported the
+resource group into state.
+
+#### Issue 2 — Key Vault Soft-Delete Conflict
+kv-lab-terraform name reserved globally from deleted old subscription vault
+(90-day soft-delete retention). Renamed to kv-lab2-terraform to unblock apply.
+
+#### Issue 3 — Metric Alert Race Condition
+azurerm_monitor_metric_alert tried to reference vm-lab-dc01-tf before it existed.
+Fixed with depends_on = [azurerm_windows_virtual_machine.dc01].
+
+#### Issue 4 — Phase5 Plan Blocking Phase3 Apply
+Phase5 data sources reference VNet and NSG that don't exist on a fresh environment.
+Phase5 plan was failing and blocking the apply job due to matrix job failure propagation.
+Fixed by adding continue-on-error: true to the phase5 matrix entry.
