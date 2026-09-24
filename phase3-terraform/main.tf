@@ -188,7 +188,7 @@ resource "azurerm_linux_virtual_machine" "lx01" {
 }
 
 resource "azurerm_key_vault" "lab" {
-  name                      = "kv-lab-terraform"
+  name                      = "kv-lab2-terraform"
   location                  = azurerm_resource_group.lab.location
   resource_group_name       = azurerm_resource_group.lab.name
   tenant_id                 = var.tenant_id
@@ -237,6 +237,8 @@ resource "azurerm_monitor_metric_alert" "vm_unavailable" {
   action {
     action_group_id = azurerm_monitor_action_group.lab.id
   }
+
+  depends_on = [azurerm_windows_virtual_machine.dc01]
 }
 
 resource "azurerm_private_dns_zone" "lab_local" {
