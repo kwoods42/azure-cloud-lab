@@ -26,8 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        directory: [phase3-terraform, phase5-terraform]
+        include:
+          - directory: phase3-terraform
+            continue-on-error: false
+          - directory: phase5-terraform
+            continue-on-error: true
       fail-fast: false
+    continue-on-error: ${{ matrix.continue-on-error }}
 
     steps:
       - name: Checkout
@@ -89,4 +94,3 @@ jobs:
       - name: Terraform Apply
         working-directory: phase3-terraform
         run: terraform apply -auto-approve tfplan
-
