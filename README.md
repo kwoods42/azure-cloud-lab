@@ -156,7 +156,7 @@ the standard pattern for team environments where multiple engineers share
 infrastructure state.
 
 **Resources created:**
-- Storage Account: `stlabterraformstate` (Standard LRS, East US)
+- Storage Account: `stlabtfstate2026` (Standard LRS, East US)
 - Blob Container: `tfstate`
 - State file: `lab.terraform.tfstate`
 
@@ -165,7 +165,7 @@ infrastructure state.
 ```hcl
 backend "azurerm" {
   resource_group_name  = "rg-lab-terraform"
-  storage_account_name = "stlabterraformstate"
+  storage_account_name = "stlabtfstate2026"
   container_name       = "tfstate"
   key                  = "lab.terraform.tfstate"
 }
@@ -243,7 +243,7 @@ environment.
 - `vm-lab-fs01` — File Server
 - `vm-lab-app01` / `vm-lab-app02` — IIS Application Servers
 - All NICs, public IPs, and NSG associations
-- Remote state stored in `stlabterraformstate` / `tfstate` container,
+- Remote state stored in `stlabtfstate2026` / `tfstate` container,
   key: `phase5.terraform.tfstate`
 
 ---
@@ -688,7 +688,7 @@ differently than an interactive CLI session — the runner has no cached
 credentials or managed identity fallback.
 
 **Fix:** Assigned `Storage Blob Data Contributor` to `sp-terraform-lab` scoped
-directly to `stlabterraformstate`. This is the minimum required permission for
+directly to `stlabtfstate2026`. This is the minimum required permission for
 Terraform to read and write state blobs.
 
 ---
@@ -1004,7 +1004,7 @@ DC restore procedure in 10.2.
 Azure dependency protection prevented full destruction — the environment self-protected.
 Confirmed guardrails working as designed.
 
-**10.1b — Terraform State Destruction:** State blobs deleted from stlabterraformstate,
+**10.1b — Terraform State Destruction:** State blobs deleted from stlabtfstate2026,
 rendering all resources invisible to Terraform. Full state reconstruction performed via
 29 terraform import blocks. Recovery completed in 22 minutes with zero infrastructure
 changes — 29 imported, 0 added, 0 changed, 0 destroyed.
@@ -1121,7 +1121,7 @@ az backup restore restore-disks \
   --item-name vm-lab-fs01 \
   --rp-name <recovery-point-id> \
   --target-resource-group rg-lab-terraform \
-  --storage-account stlabterraformstate
+  --storage-account stlabtfstate2026
 ```
 
 Poll job status until Completed. Download ARM template from restore container.
