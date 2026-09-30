@@ -1,9 +1,61 @@
 # Azure Cloud Lab
 
-Hands-on Azure infrastructure lab documenting my build-out from a
-VMware/AD engineering background into cloud infrastructure.
+Hands-on Azure infrastructure lab documenting my build-out from a VMware/AD engineering background into cloud infrastructure.
+
+## At a Glance
+
+- **Who:** 22+ years of enterprise VMware, Active Directory, and PowerShell experience, building cloud skills the hands-on way.
+- **What:** A three-tier Windows environment (AD, file services, IIS, SQL) plus Linux, running in Azure in a hub-spoke network.
+- **Infrastructure as code:** Terraform with remote state in Azure Storage, deployed through GitHub Actions (plan on every push, apply on merge).
+- **Identity and governance:** Entra ID, RBAC, Conditional Access (report-only), Azure Policy, Key Vault for secrets, tiered admin accounts in AD.
+- **Network security:** Hub-spoke topology, Bastion-only access, NAT gateway for outbound, private DNS and a Key Vault private endpoint, default-deny NSG.
+- **Operations:** Azure Monitor with KQL and Workbooks, PowerShell Automation runbooks, Update Manager patching, Azure Backup.
+- **Recovery testing:** Rebuilt 29 Terraform-managed resources from destroyed state using imports, and restored a domain controller disk from backup. Two DR scenarios were limited by trial-subscription quota and are labeled as such.
+- **Honest by design:** Every phase includes the errors I hit and how I fixed them, and blocked items are marked as blocked.
+- **Status:** Phase 11 (hybrid identity) in progress.
+
+### Architecture
+
+```mermaid
+flowchart LR
+  GH["GitHub Actions<br/>plan on push, apply on merge"] --> TF["Terraform<br/>remote state in Azure Storage"]
+  TF --> AZ
+  subgraph AZ["Azure subscription (TBGWorks tenant)"]
+    subgraph HUB["vnet-lab-hub 10.30.0.0/16"]
+      BAS["bastion-hub (Standard)"]
+    end
+    subgraph SPOKE["vnet-lab-terraform 10.20.0.0/16, snet-servers"]
+      DC["dc02: AD DS, lab.local"]
+      FS["fs01: file server"]
+      APP["app01: IIS"]
+      DB["app02: SQL Express"]
+      KVPE["Private endpoint to Key Vault"]
+    end
+    HUB <-->|peering| SPOKE
+    NAT["NAT gateway, outbound only"] --> SPOKE
+    subgraph SVC["Shared services"]
+      KV["Key Vault"]
+      LAW["Log Analytics and Azure Monitor"]
+      RSV["Recovery Services Vault"]
+      AA["Automation runbooks"]
+      POL["Azure Policy and Defender for Cloud"]
+    end
+  end
+```
+
+### Repository Layout
+
+| Path | Contents |
+| ---- | -------- |
+| `phase3-terraform/` | Live Terraform config managed by the CI/CD pipeline |
+| `phase5-terraform/` | Brownfield documentation of the AD environment (plan only) |
+| `.github/workflows/` | GitHub Actions pipeline for Terraform |
+| `runbook-vm-startstop.ps1` | Automation runbook: start or stop all lab VMs |
+| `runbook-tag-compliance.ps1` | Automation runbook: report resources missing required tags |
+| `workbook-lab-infrastructure.json` | Exported Azure Monitor Workbook (ARM template) |
 
 ## Tools
+
 - Azure Portal / Azure CLI
 - Terraform (Phase 3+)
 - GitHub for config management
@@ -11,12 +63,13 @@ VMware/AD engineering background into cloud infrastructure.
 ---
 
 ## Phase 1 — Networking & Virtual Machines ✅
+
 **Completed: September 1, 2026**
 
 - Created Resource Group: `rg-lab-eastus` (East US)
 - Deployed Virtual Network: `vnet-lab-eastus` (10.10.0.0/16)
-  - Subnet: `snet-servers` (10.10.1.0/24)
-  - Subnet: `snet-mgmt` (10.10.2.0/24)
+  * Subnet: `snet-servers` (10.10.1.0/24)
+  * Subnet: `snet-mgmt` (10.10.2.0/24)
 - Deployed Windows Server 2025 VM: `vm-lab-dc01`
 - Deployed Ubuntu 24.04 LTS VM: `vm-lab-lx01`
 - Verified RDP access (Windows) and SSH key auth (Linux) from local machine
@@ -24,7 +77,8 @@ VMware/AD engineering background into cloud infrastructure.
 ---
 
 ## Phase 2 — Entra ID & RBAC ✅
-**Completed: September 2026**
+
+**Completed: September 6, 2026**
 
 - Created Entra ID users: `lab-admin`, `lab-reader`, `lab-operator`
 - Created security groups: `grp-lab-admins`, `grp-lab-readers`
@@ -35,13 +89,16 @@ VMware/AD engineering background into cloud infrastructure.
 ---
 
 ## Phase 3 — Terraform Automation ✅
+
 **Completed: September 7, 2026**
 
 ### 3.1 — Provider Configuration
+
 - Configured `azurerm` provider (~> 3.0) with Service Principal credentials
 - Stored credentials in `terraform.tfvars` (excluded from Git via `.gitignore`)
 
 ### 3.2 — First Resource Group
+
 - Provisioned `rg-lab-terraform` via Terraform
 - Verified resource appeared in Azure Portal in real time
 - Committed initial config to GitHub
@@ -51,17 +108,19 @@ VMware/AD engineering background into cloud infrastructure.
 Reproduced the entire Phase 1 environment in Terraform code:
 
 **Resources provisioned:**
+
 - Resource Group: `rg-lab-terraform` (East US)
 - Virtual Network: `vnet-lab-terraform` (10.20.0.0/16)
-  - Subnet: `snet-servers` (10.20.1.0/24)
+  * Subnet: `snet-servers` (10.20.1.0/24)
 - Network Security Group: `nsg-lab-servers`
-  - Inbound rules: RDP (3389) and SSH (22) restricted to home IP only
+  * Inbound rules: RDP (3389) and SSH (22) restricted to home IP only
 - Windows Server 2022 VM: `vm-lab-dc01-tf` (Standard_D2s_v7)
 - Ubuntu 22.04 LTS VM: `vm-lab-lx01-tf` (Standard_D2s_v7)
 - Public IPs and NICs for both VMs
 - NSG associations on both NICs
 
 **Verified:**
+
 - SSH into Linux VM from Ouroboros6 confirmed
 - RDP into Windows VM confirmed
 
@@ -110,11 +169,9 @@ in East US.
 
 **Error:** `BadRequest — 'Standard_D2s_v7' cannot boot Hypervisor Generation '1'. Image must match VM size generation.`
 
-**Cause:** Windows Server 2022 standard image is Gen 1; `Standard_D2s_v7`
-is Gen 2 only.
+**Cause:** Windows Server 2022 standard image is Gen 1; `Standard_D2s_v7` is Gen 2 only.
 
-**Fix:** Switched Windows image SKU from `2022-datacenter` to
-`2022-datacenter-g2` (the Gen 2 variant).
+**Fix:** Switched Windows image SKU from `2022-datacenter` to `2022-datacenter-g2` (the Gen 2 variant).
 
 ### Issue 5 — Terraform State Drift
 
@@ -133,22 +190,23 @@ state. For resources that couldn't be imported, deleted them via Azure CLI
 ## Key Lessons Learned
 
 - **Always `terraform destroy` before changing regions** — partial builds
-  across region changes cause state drift that's painful to unwind.
+across region changes cause state drift that's painful to unwind.
 - **Free tier subscriptions have hidden capacity limits** that persist even
-  when VMs are deallocated. Pay-as-you-go removes these restrictions.
+when VMs are deallocated. Pay-as-you-go removes these restrictions.
 - **Check SKU availability before applying** using `az vm list-skus` — saves
-  multiple failed apply cycles.
+multiple failed apply cycles.
 - **VM image generation must match VM size generation** — D/v5+ sizes are
-  Gen 2 only; use `-g2` image SKUs accordingly.
+Gen 2 only; use `-g2` image SKUs accordingly.
 - **`terraform import`** is the right tool when state drifts — don't delete
-  and recreate if the resource already exists in Azure.
+and recreate if the resource already exists in Azure.
 - **`prevent_deletion_if_contains_resources = false`** in the provider block
-  is necessary for clean resource group destroys when child resources are
-  in an inconsistent state.
+is necessary for clean resource group destroys when child resources are
+in an inconsistent state.
 
 ---
 
 ## Phase 3.4 — Remote State Backend ✅
+
 **Completed: September 7, 2026**
 
 Migrated Terraform state from local file to Azure Storage Account backend —
@@ -156,13 +214,14 @@ the standard pattern for team environments where multiple engineers share
 infrastructure state.
 
 **Resources created:**
+
 - Storage Account: `stlabtfstate2026` (Standard LRS, East US)
 - Blob Container: `tfstate`
 - State file: `lab.terraform.tfstate`
 
 **Backend config added to `main.tf`:**
 
-```hcl
+```
 backend "azurerm" {
   resource_group_name  = "rg-lab-terraform"
   storage_account_name = "stlabtfstate2026"
@@ -173,19 +232,15 @@ backend "azurerm" {
 
 **Migration:** Ran `terraform init` after adding the backend block —
 Terraform detected the new backend and prompted to migrate existing local
-state to Azure Storage. Confirmed with `az storage blob list` that
-`lab.terraform.tfstate` landed in the container.
+state to Azure Storage. Confirmed with `az storage blob list` that `lab.terraform.tfstate` landed in the container.
 
 **Verified:** `terraform plan` returned no changes after migration,
 confirming state integrity.
 
 ---
 
-## Phase 4 — Documentation & Resume Integration ✅
-
----
-
 ## Phase 5 — Full AD Portfolio Environment ✅
+
 **Completed: September 7, 2026**
 
 Full Windows environment deployed in Azure, domain-joined and configured
@@ -209,8 +264,8 @@ documented as code in `phase5-terraform/`.
 - Installed File and Storage Services role
 - Created SMB shares: `\\fs01\Users`, `\\fs01\Dept`, `\\fs01\IT`
 - Applied NTFS permissions using AD security groups (no individual user ACEs):
-  - IT-Admins: FullControl on all shares
-  - IT-Users: Modify on Users and Dept; no access to IT share
+  * IT-Admins: FullControl on all shares
+  * IT-Users: Modify on Users and Dept; no access to IT share
 
 ### 5.3 — IIS Application Servers ✅
 
@@ -228,40 +283,41 @@ documented as code in `phase5-terraform/`.
 - Created distribution group: `IT-Staff`
 - Created shared mailbox: `itsupport@TBGWorks.onmicrosoft.com`
 - Architectural decision: M365 over on-premises Exchange — lower cost, no
-  infrastructure overhead, reflects how most organizations run mail today
+infrastructure overhead, reflects how most organizations run mail today
 
 ### 5.5 — Terraform Documentation ✅
 
-Phase 5 VMs were provisioned manually via the Azure Portal. The
-`phase5-terraform/` folder documents the full infrastructure as code and
+Phase 5 VMs were provisioned manually via the Azure Portal. The `phase5-terraform/` folder documents the full infrastructure as code and
 can be used to rebuild the environment from scratch. Existing VMs are
 intentionally not managed by this config to avoid disrupting the live AD
 environment.
 
 **Resources documented:**
+
 - `vm-lab-dc02` — Domain Controller, static IP 10.20.1.6
 - `vm-lab-fs01` — File Server
 - `vm-lab-app01` / `vm-lab-app02` — IIS Application Servers
 - All NICs, public IPs, and NSG associations
 - Remote state stored in `stlabtfstate2026` / `tfstate` container,
-  key: `phase5.terraform.tfstate`
+key: `phase5.terraform.tfstate`
 
 ---
 
 ## Architecture Summary
 
-| VM | Role | Private IP | Domain |
-|---|---|---|---|
-| vm-lab-dc02 | Domain Controller (lab.local) | 10.20.1.6 | lab.local |
-| vm-lab-fs01 | File Server | 10.20.1.7 | lab.local |
-| vm-lab-app01 | IIS App Server | 10.20.1.8 | lab.local |
-| vm-lab-app02 | Database Server (SQL Express) | 10.20.1.9 | lab.local |
-| vm-lab-dc01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
-| vm-lab-lx01-tf | Terraform baseline (Phase 3) | dynamic | standalone |
+| VM             | Role                          | Private IP | Domain     |
+| -------------- | ----------------------------- | ---------- | ---------- |
+| vm-lab-dc02    | Domain Controller (lab.local) | 10.20.1.6  | lab.local  |
+| vm-lab-fs01    | File Server                   | 10.20.1.7  | lab.local  |
+| vm-lab-app01   | IIS App Server                | 10.20.1.8  | lab.local  |
+| vm-lab-app02   | Database Server (SQL Express) | 10.20.1.9  | lab.local  |
+| vm-lab-dc01-tf | Terraform baseline (Phase 3)  | dynamic    | standalone |
+| vm-lab-lx01-tf | Terraform baseline (Phase 3)  | dynamic    | standalone |
 
 ---
 
 ## Phase 6 — Security Hardening ✅
+
 **Completed: September 8, 2026**
 
 Security hardening applied across the full stack — identity, network,
@@ -271,11 +327,11 @@ monitoring, and compliance.
 
 - Deployed `kv-lab-terraform` (Standard SKU, RBAC authorization enabled)
 - Migrated Terraform secrets out of `terraform.tfvars` into Key Vault:
-  - `sp-client-secret` — Service Principal credential
-  - `admin-password` — VM local admin password
+  * `sp-client-secret` — Service Principal credential
+  * `admin-password` — VM local admin password
 - Terraform provider now reads `admin-password` via `data.azurerm_key_vault_secret`
 - `client_secret` handled via `ARM_CLIENT_SECRET` environment variable
-  sourced from Key Vault at session start (`source lab-env.sh`)
+sourced from Key Vault at session start (`source lab-env.sh`)
 - `client_secret` and `admin_password` removed from `variables.tf` and `terraform.tfvars`
 - Granted Service Principal (`sp-terraform-lab`) Key Vault Secrets User role
 
@@ -295,26 +351,26 @@ monitoring, and compliance.
 - Configured email security alerts via Defender for Cloud portal
 - Created Azure Monitor action group: `ag-lab-alerts` (email: lab administrator)
 - Created VM CPU alert rule on `vm-lab-dc01-tf` — triggers when CPU < 1%
-  (detects unplanned deallocation)
+(detects unplanned deallocation)
 
 ### 6.4 — Azure Policy ✅
 
 Three subscription-scoped policies assigned to enforce governance standards:
 
-| Policy | Scope | Effect |
-|---|---|---|
-| Require `environment` tag | Subscription | Deny untagged resources |
-| Allowed locations | Subscription | East US + global only |
-| Allowed VM SKUs | Subscription | B-series and D-series only |
+| Policy                    | Scope        | Effect                     |
+| ------------------------- | ------------ | -------------------------- |
+| Require `environment` tag | Subscription | Deny untagged resources    |
+| Allowed locations         | Subscription | East US + global only      |
+| Allowed VM SKUs           | Subscription | B-series and D-series only |
 
 ### 6.5 — Conditional Access & MFA ✅
 
 - Activated Microsoft Entra ID P2 trial on `TBGWorks.onmicrosoft.com`
 - Security Defaults confirmed disabled (prerequisite for Conditional Access)
 - Created Conditional Access policy: `Require MFA for All Users`
-  - Scope: All users, All cloud apps
-  - Excluded: KevinWoods@TBGWorks.onmicrosoft.com (break-glass admin account)
-  - Mode: Report-only (production best practice before enforcement)
+  * Scope: All users, All cloud apps
+  * Excluded: one break-glass admin account
+  * Mode: Report-only (production best practice before enforcement)
 
 **Note:** Conditional Access with MFA is the enterprise-preferred approach
 over Security Defaults — requires Entra ID P1/P2 licensing. Report-only
@@ -323,8 +379,7 @@ the correct rollout pattern in any production environment.
 
 ### 6.6 — HTTPS on IIS ✅
 
-- Generated self-signed certificates on `vm-lab-app01` and `vm-lab-app02`
-  via `New-SelfSignedCertificate` (2-year validity, bound to `lab.local` FQDN)
+- Generated self-signed certificates on `vm-lab-app01` and `vm-lab-app02` via `New-SelfSignedCertificate` (2-year validity, bound to `lab.local` FQDN)
 - Configured IIS HTTPS binding on port 443 on both app servers
 - Opened Windows Firewall for HTTPS (port 443) on both VMs
 - Added `AllowHTTPS` NSG inbound rule (port 443, source: VirtualNetwork)
@@ -334,36 +389,39 @@ the correct rollout pattern in any production environment.
 ### 6.7 — AD Hardening ✅
 
 **Account Lockout Policy** applied via `Set-ADDefaultDomainPasswordPolicy`:
+
 - Lockout threshold: 5 failed attempts
 - Lockout duration: 30 minutes
 - Observation window: 30 minutes
 
 **Tiered Admin Model** implemented:
+
 - Created dedicated admin account `drice-adm` (Declan Rice Admin)
 - `drice-adm` added to `IT-Admins` security group
 - `drice` (daily-use account) removed from `IT-Admins`
 - Separation of duties: standard account for daily work, admin account
-  for elevated tasks only — mirrors enterprise privilege tiering best practice
+for elevated tasks only — mirrors enterprise privilege tiering best practice
 
 ### 6.8 — NSG Tightening ✅
 
 - Added explicit `DenyAllInbound` rule at priority 4096 (lowest precedence)
 - NSG now follows whitelist model: only permitted traffic is explicitly allowed,
-  everything else is denied by policy rather than by default
+everything else is denied by policy rather than by default
 
 **Final NSG inbound ruleset:**
 
-| Rule | Priority | Protocol | Port | Source | Action |
-|---|---|---|---|---|---|
-| AllowHTTP | 1003 | TCP | 80 | VirtualNetwork | Allow |
-| AllowHTTPS | 1004 | TCP | 443 | VirtualNetwork | Allow |
-| DenyAllInbound | 4096 | Any | Any | Any | Deny |
+| Rule           | Priority | Protocol | Port | Source         | Action |
+| -------------- | -------- | -------- | ---- | -------------- | ------ |
+| AllowHTTP      | 1003     | TCP      | 80   | VirtualNetwork | Allow  |
+| AllowHTTPS     | 1004     | TCP      | 443  | VirtualNetwork | Allow  |
+| DenyAllInbound | 4096     | Any      | Any  | Any            | Deny   |
 
 - Terraform updated and verified clean (`No changes`)
 
 ---
 
 ## Phase 7 — Backup & Disaster Recovery ✅
+
 **Completed: September 9, 2026**
 
 Deployed VM-level backup protection across all lab VMs using Azure Backup
@@ -373,52 +431,53 @@ and a centralized Recovery Services Vault.
 
 - Deployed `rsv-lab-eastus` (Standard SKU, East US)
 - Configured storage redundancy as GeoRedundant — backup data is replicated
-  to a secondary region automatically
+to a secondary region automatically
 - Soft delete is AlwaysON — deleted backups are retained 14 days and cannot
-  be disabled
+be disabled
 - Azure Monitor alerts enabled by default for job failures and failover issues
 - Tagged `environment=lab` — required by the Azure Policy enforced in Phase 6.4
 
 **Note:** Initial deployment was blocked by my own tag policy
-(`require-environment-tag`). Resolved it by adding `--tags environment=lab`
-to the vault creation command — a real-world example of governance controls
+(`require-environment-tag`). Resolved it by adding `--tags environment=lab` to the vault creation command — a real-world example of governance controls
 enforcing standards across all resource types including DR infrastructure.
 
 ### 7.2 — Backup Policy ✅
 
 - Used `DefaultPolicy` (daily backups, 30-day retention, UTC 00:30)
 - Custom policy creation was blocked by a known Azure CLI bug — DefaultPolicy
-  meets all lab requirements and is the standard starting point in production
+meets all lab requirements and is the standard starting point in production
 
 ### 7.3 — VM Backup Enrollment ✅
 
 Enrolled all six lab VMs in Azure Backup under DefaultPolicy:
 
-| VM | Role | Backup Status |
-|---|---|---|
-| vm-lab-dc01-tf | Terraform baseline (Windows) | Enrolled ✅ |
-| vm-lab-lx01-tf | Terraform baseline (Linux) | Enrolled ✅ |
-| vm-lab-dc02 | Domain Controller | Enrolled ✅ |
-| vm-lab-fs01 | File Server | Enrolled ✅ |
-| vm-lab-app01 | IIS App Server | Enrolled ✅ |
-| vm-lab-app02 | Database Server | Enrolled ✅ |
+| VM             | Role                         | Backup Status |
+| -------------- | ---------------------------- | ------------- |
+| vm-lab-dc01-tf | Terraform baseline (Windows) | Enrolled ✅    |
+| vm-lab-lx01-tf | Terraform baseline (Linux)   | Enrolled ✅    |
+| vm-lab-dc02    | Domain Controller            | Enrolled ✅    |
+| vm-lab-fs01    | File Server                  | Enrolled ✅    |
+| vm-lab-app01   | IIS App Server               | Enrolled ✅    |
+| vm-lab-app02   | Database Server              | Enrolled ✅    |
 
 ### 7.4 — Backup Verification ✅
 
 - Triggered an on-demand backup of `vm-lab-dc02` to verify the end-to-end
-  backup pipeline
+backup pipeline
 - Initial attempt failed: Azure Backup auto-created resource group
-  `AzureBackupRG_eastus_1` was blocked by my tag policy — resolved by
-  creating a policy exemption (Waiver category) scoped to that resource group
+`AzureBackupRG_eastus_1` was blocked by my tag policy — resolved by
+creating a policy exemption (Waiver category) scoped to that resource group
 - Second attempt succeeded: snapshot taken, transferred to vault, validated
 - Confirmed a recovery point exists in `rsv-lab-eastus`
 
 ---
 
 ## Phase 8 — Database Tier, Monitoring & Automation
+
 **Started: September 2026**
 
 ### 8.1 — Database Server (vm-lab-app02 → vm-lab-db01) ✅
+
 **Completed: September 14, 2026**
 
 Repurposed `vm-lab-app02` as a dedicated database server running SQL Server
@@ -426,22 +485,24 @@ Express 2022, adding a database tier to the environment and completing a
 three-tier architecture: IIS (web) → app → database.
 
 **Infrastructure changes:**
+
 - Deployed NAT Gateway `natgw-lab` with public IP `pip-lab-natgateway` —
-  provides outbound internet access for VMs without exposing them to inbound
-  traffic. Required for SQL Server Express download and future Windows Updates.
+provides outbound internet access for VMs without exposing them to inbound
+traffic. Required for SQL Server Express download and future Windows Updates.
 - Attached NAT Gateway to `snet-servers` subnet
 - Configured DNS forwarders on `vm-lab-dc02` (8.8.8.8, 8.8.4.4) for external
-  name resolution
+name resolution
 - Added `AllowVnetInbound` NSG rule (priority 1000) — allows all intra-VNet
-  traffic
+traffic
 - Added `AllowSQL` NSG rule (priority 1005, TCP 1433, source: VirtualNetwork)
 - Upgraded Bastion to Standard SKU with native tunneling enabled
 - Added `environment=lab` tags to NSG, Bastion, and pip-bastion resources
-  to satisfy Azure Policy tag enforcement
+to satisfy Azure Policy tag enforcement
 
 **SQL Server Express 2022:**
+
 - Installed via `az vm run-command` (Bastion interactive sessions unavailable
-  from local machine — documented as known issue)
+from local machine — documented as known issue)
 - Silent install using full installer `SQLEXPR_x64_ENU.exe` (279MB)
 - Instance name: `SQLEXPRESS`
 - Data directory: `C:\SQLData`
@@ -477,16 +538,13 @@ is verified stable.
 
 ### Issue 3 — SQL Server Sector Size Mismatch
 
-**Error:** `Cannot use file 'master.mdf' because it was originally formatted
-with sector size 4096 and is now on a volume with sector size 8192.`
+**Error:** `Cannot use file 'master.mdf' because it was originally formatted with sector size 4096 and is now on a volume with sector size 8192.`
 
 **Cause:** Azure VM disk (Standard_D2lds_v7) uses 8192-byte physical sectors.
 SQL Server 2022 installer created system database files expecting 4096-byte
 sectors during the first install attempt which timed out.
 
-**Fix:** Added registry key
-`HKLM:\SYSTEM\CurrentControlSet\Services\stornvme\Parameters\Device`
-with `ForcedPhysicalSectorSizeInBytes = * 4095` to force 4096-byte sector
+**Fix:** Added registry key `HKLM:\SYSTEM\CurrentControlSet\Services\stornvme\Parameters\Device` with `ForcedPhysicalSectorSizeInBytes = * 4095` to force 4096-byte sector
 reporting. Uninstalled SQL Server, deleted corrupted data files, and
 reinstalled fresh with explicit data directory flags.
 
@@ -502,15 +560,16 @@ keeping each operation well within the timeout window.
 
 **Updated NSG ruleset:**
 
-| Rule | Priority | Protocol | Port | Source | Action |
-|---|---|---|---|---|---|
-| AllowVnetInbound | 1000 | Any | Any | VirtualNetwork | Allow |
-| AllowHTTP | 1003 | TCP | 80 | VirtualNetwork | Allow |
-| AllowHTTPS | 1004 | TCP | 443 | VirtualNetwork | Allow |
-| AllowSQL | 1005 | TCP | 1433 | VirtualNetwork | Allow |
-| DenyAllInbound | 4096 | Any | Any | Any | Deny |
+| Rule             | Priority | Protocol | Port | Source         | Action |
+| ---------------- | -------- | -------- | ---- | -------------- | ------ |
+| AllowVnetInbound | 1000     | Any      | Any  | VirtualNetwork | Allow  |
+| AllowHTTP        | 1003     | TCP      | 80   | VirtualNetwork | Allow  |
+| AllowHTTPS       | 1004     | TCP      | 443  | VirtualNetwork | Allow  |
+| AllowSQL         | 1005     | TCP      | 1433 | VirtualNetwork | Allow  |
+| DenyAllInbound   | 4096     | Any      | Any  | Any            | Deny   |
 
 ### 8.2 — GitHub Actions CI/CD for Terraform ✅
+
 **Completed: September 16, 2026**
 
 Implemented a full CI/CD pipeline for Terraform using GitHub Actions, with a
@@ -518,24 +577,25 @@ matrix strategy running plan across both Terraform directories in parallel and
 auto-apply scoped to the live infrastructure directory on merge to main.
 
 **Pipeline design:**
+
 - `terraform plan` runs in parallel across `phase3-terraform` and
-  `phase5-terraform` on every push and pull request via a matrix strategy
+`phase5-terraform` on every push and pull request via a matrix strategy
 - `terraform apply` runs only on `phase3-terraform` on merge to main —
-  phase5 is brownfield documentation, not live state, so apply is intentionally
-  excluded
+phase5 is brownfield documentation, not live state, so apply is intentionally
+excluded
 - Apply is sequenced to run only after both plans succeed
 - Plan artifacts (tfplan files) are uploaded and passed to the apply job —
-  the same plan that was reviewed is what gets applied, never a fresh run
+the same plan that was reviewed is what gets applied, never a fresh run
 - `workflow_dispatch` is available as a manual trigger
 - `fail-fast: false` on the matrix ensures a phase5 plan failure does not
-  cancel the phase3 plan
+cancel the phase3 plan
 
 **GitHub repository secrets configured:**
-- `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_SUBSCRIPTION_ID`, `ARM_TENANT_ID`
-  — feed the azurerm provider directly via environment variables
+
+- `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_SUBSCRIPTION_ID`, `ARM_TENANT_ID` — feed the azurerm provider directly via environment variables
 - `TF_VAR_subscription_id`, `TF_VAR_client_id`, `TF_VAR_tenant_id`,
-  `TF_VAR_admin_password`, `TF_VAR_ssh_public_key` — supply Terraform input
-  variables without committing a tfvars file to the repo
+`TF_VAR_admin_password`, `TF_VAR_ssh_public_key` — supply Terraform input
+variables without committing a tfvars file to the repo
 
 ---
 
@@ -545,8 +605,7 @@ auto-apply scoped to the live infrastructure directory on merge to main.
 
 **Error:** `A sequence was not expected` on line 20.
 
-**Cause:** The workflow file was saved with the heredoc shell wrapper (`cat >
-... << 'EOF'`) included as content, making the first line of the file a bash
+**Cause:** The workflow file was saved with the heredoc shell wrapper (`cat > ... << 'EOF'`) included as content, making the first line of the file a bash
 command rather than valid YAML.
 
 **Fix:** Rewrote the file using a heredoc with a distinct delimiter (`ENDOFFILE`)
@@ -559,13 +618,14 @@ to avoid the shell wrapper being captured as file content.
 **Error:** `Terraform exited with code 3. Process completed with exit code 1.`
 
 **Cause:** Three compounding factors:
+
 1. `terraform plan -detailed-exitcode` returns exit code 2 when changes are
-   detected — not an error, but GitHub Actions treated it as one.
+detected — not an error, but GitHub Actions treated it as one.
 2. `hashicorp/setup-terraform@v3` wraps the Terraform binary and intercepts
-   exit codes before shell logic can handle them.
+exit codes before shell logic can handle them.
 3. GitHub Actions `run` blocks execute with `set -e` by default, causing the
-   shell to exit immediately on any non-zero return before `$?` could be
-   captured.
+shell to exit immediately on any non-zero return before `$?` could be
+captured.
 
 **Fix:** Disabled the Terraform wrapper (`terraform_wrapper: false`) and
 removed `-detailed-exitcode` entirely. Standard `terraform plan` returns 0
@@ -594,8 +654,7 @@ line 31 of phase5 `main.tf`.
 
 **Cause:** The phase5 provider block still referenced `var.client_secret` from
 before Key Vault took over secret management in Phase 6. The variable was
-never declared because phase3 handles authentication via the `ARM_CLIENT_SECRET`
-environment variable.
+never declared because phase3 handles authentication via the `ARM_CLIENT_SECRET` environment variable.
 
 **Fix:** Removed the `client_secret` line from the phase5 provider block. The
 azurerm provider picks up `ARM_CLIENT_SECRET` from the environment
@@ -607,22 +666,18 @@ automatically without needing it explicitly declared.
 
 **Error:** `No configuration files` — Terraform plan failing in 0 seconds.
 
-**Cause:** `phase5-terraform/terraform.tfvars` and `phase5-terraform/variables.tf`
-were symlinks pointing to `../phase3-terraform/`. Git stores symlinks as
+**Cause:** `phase5-terraform/terraform.tfvars` and `phase5-terraform/variables.tf` were symlinks pointing to `../phase3-terraform/`. Git stores symlinks as
 symlink objects, not file content. The GitHub Actions runner checked out the
 symlinks correctly but the relative target path did not resolve in the runner
 environment.
 
-**Fix:** Removed the symlinks and replaced them with real file copies. `terraform.tfvars`
-is gitignored and not committed — variables are supplied via `TF_VAR_*`
-environment variables from GitHub Secrets instead.
+**Fix:** Removed the symlinks and replaced them with real file copies. `terraform.tfvars` is gitignored and not committed — variables are supplied via `TF_VAR_*` environment variables from GitHub Secrets instead.
 
 ---
 
 #### Issue 6 — Undeclared Variable: admin_password
 
-**Error:** `Reference to undeclared input variable` — `var.admin_password`
-referenced in four Windows VM resources in phase5 `main.tf`.
+**Error:** `Reference to undeclared input variable` — `var.admin_password` referenced in four Windows VM resources in phase5 `main.tf`.
 
 **Cause:** `admin_password` was never declared in `variables.tf` because phase3
 retrieves it from Key Vault via a data source rather than as an input variable.
@@ -636,8 +691,7 @@ added `TF_VAR_admin_password` to GitHub Secrets, sourced from Key Vault.
 
 #### Issue 7 — SSH Key Type Mismatch
 
-**Error:** `the provided ssh-ed25519 SSH key is not supported. Only RSA SSH
-keys are supported by Azure`
+**Error:** `the provided ssh-ed25519 SSH key is not supported. Only RSA SSH keys are supported by Azure`
 
 **Cause:** The local SSH key on Ouroboros6 is ed25519. Azure's azurerm provider
 requires RSA keys for Linux VM `admin_ssh_key` blocks. The ed25519 public key
@@ -645,8 +699,7 @@ was stored in `TF_VAR_ssh_public_key` and passed to the runner.
 
 **Fix:** Generated a dedicated RSA 4096-bit key pair for CI (`id_rsa_lab`).
 Updated `TF_VAR_ssh_public_key` in GitHub Secrets with the RSA public key.
-Added a `lifecycle { ignore_changes = [admin_ssh_key] }` block to `vm-lab-lx01-tf`
-to prevent Terraform from forcing VM replacement when the key differs from
+Added a `lifecycle { ignore_changes = [admin_ssh_key] }` block to `vm-lab-lx01-tf` to prevent Terraform from forcing VM replacement when the key differs from
 what was used at creation time.
 
 ---
@@ -678,8 +731,7 @@ environment.
 
 #### Issue 9 — SP Missing Storage Blob Permissions for Remote State
 
-**Error:** `Failed to get existing workspaces: retrieving container client:
-retrieving key for Storage Account` — HTTP response nil, connection reset.
+**Error:** `Failed to get existing workspaces: retrieving container client: retrieving key for Storage Account` — HTTP response nil, connection reset.
 
 **Cause:** The Service Principal `sp-terraform-lab` had Contributor at the
 subscription scope but lacked explicit permissions on the storage account
@@ -694,6 +746,7 @@ Terraform to read and write state blobs.
 ---
 
 ### 8.3 — Azure Monitor KQL + Workbooks ✅
+
 **Completed: September 16, 2026**
 
 Deployed full observability stack connecting three lab VMs to the existing
@@ -701,66 +754,66 @@ Log Analytics workspace `law-lab-eastus` and built a custom Azure Monitor
 Workbook surfacing infrastructure health data.
 
 **Azure Monitor Agent deployment:**
+
 - Installed AzureMonitorWindowsAgent extension on vm-lab-dc02, vm-lab-fs01,
-  and vm-lab-app02
+and vm-lab-app02
 - Assigned system-managed identity to all three VMs — required for AMA
-  authentication to the Data Collection Rule
+authentication to the Data Collection Rule
 - Created policy exemption for VM extension deployment (tag policy blocks
-  extension resources by default)
+extension resources by default)
 
 **Data Collection Rule — `dcr-lab-windows`:**
+
 - Collects Windows performance counters every 60 seconds:
-  `% Processor Time`, `Available MBytes`, `% Free Space`
+`% Processor Time`, `Available MBytes`, `% Free Space`
 - Collects Windows Event log (System errors/warnings) and Security events
-  (EventID 4624, 4625, 4648 — logon success, failure, explicit credentials)
+(EventID 4624, 4625, 4648 — logon success, failure, explicit credentials)
 - Associated with all three VMs and routing to `law-lab-eastus`
 
 **KQL queries developed:**
+
 - VM heartbeat status with online/offline classification
 - CPU % over time per computer (5-minute bins)
 - Available memory over time per computer (5-minute bins)
 - System event count by computer and severity level
 
 **Workbook — `wb-lab-infrastructure`:**
+
 - Four panels: VM Heartbeat Status (grid), CPU % Over Time (line chart),
-  Available Memory MB (line chart), System Events by Computer (grid)
+Available Memory MB (line chart), System Events by Computer (grid)
 - Saved to `rg-lab-terraform`, East US, tagged `environment=lab`
 - ARM template exported and committed to repo as
-  `workbook-lab-infrastructure.json` — workbook is fully reproducible
-  from code
+`workbook-lab-infrastructure.json` — workbook is fully reproducible
+from code
 
 **Troubleshooting log:**
 
 ### Issue 1 — No Heartbeat Data After Agent Install
+
 **Cause:** AMA requires a system-assigned managed identity to authenticate
-to the Data Collection Rule. VMs had no managed identity assigned.
-**Fix:** Assigned system-assigned managed identity to all three VMs via
-`az vm identity assign`.
+to the Data Collection Rule. VMs had no managed identity assigned. **Fix:** Assigned system-assigned managed identity to all three VMs via `az vm identity assign`.
 
 ### Issue 2 — Tag Policy Blocking Agent Extension Install
+
 **Cause:** The `require-environment-tag` policy enforced in Phase 6
-blocked VM extension deployment. `az vm extension set` has no `--tags`
-flag to satisfy the policy inline.
-**Fix:** Created a policy exemption (Waiver) scoped to `rg-lab-terraform`
-covering the tag policy assignment.
+blocked VM extension deployment. `az vm extension set` has no `--tags` flag to satisfy the policy inline. **Fix:** Created a policy exemption (Waiver) scoped to `rg-lab-terraform` covering the tag policy assignment.
 
 ### Issue 3 — SKU Policy Blocking Identity Assignment on vm-lab-app02
-**Cause:** Assigning a managed identity to vm-lab-app02 triggered the
-`allowed-vm-skus` policy check and was blocked.
-**Fix:** Created a targeted policy exemption scoped directly to
-`vm-lab-app02` for the SKU policy assignment.
+
+**Cause:** Assigning a managed identity to vm-lab-app02 triggered the `allowed-vm-skus` policy check and was blocked. **Fix:** Created a targeted policy exemption scoped directly to `vm-lab-app02` for the SKU policy assignment.
 
 ### Issue 4 — SecurityEvent Table Missing
+
 **Cause:** The Security event log XPath queries in the DCR route to the
 generic `Event` table rather than `SecurityEvent` — `SecurityEvent` requires
-Microsoft Sentinel or Defender for Cloud to be enabled on the workspace.
-**Fix:** Used the `Event` table for system event monitoring. Security event
+Microsoft Sentinel or Defender for Cloud to be enabled on the workspace. **Fix:** Used the `Event` table for system event monitoring. Security event
 collection (4624/4625/4648) is configured in the DCR and available for
 future Sentinel integration.
 
 ---
 
 ### 8.4 — Azure Automation Runbooks ✅
+
 **Completed: September 17, 2026**
 
 Deployed an Azure Automation Account with PowerShell runbooks authenticated
@@ -768,32 +821,36 @@ via system-assigned managed identity, completing a full detect-and-remediate
 compliance workflow.
 
 **Automation Account:** `aa-lab-eastus` (East US, Basic SKU)
-- System-assigned managed identity: `1e8e684f-ec88-4888-9971-97021b00cabe`
+
+- System-assigned managed identity enabled
 - Contributor role assigned at `rg-lab-terraform` scope
 
 **Runbook 1 — `runbook-vm-startstop.ps1`:**
+
 - Parameters: `Action` (Start or Stop), `ResourceGroup` (default: rg-lab-terraform)
 - Authenticates via `Connect-AzAccount -Identity`
 - Enumerates all VMs in the resource group and starts or stops them in parallel
 - Verified: started all six VMs and stopped all six VMs successfully
 
 **Runbook 2 — `runbook-tag-compliance.ps1`:**
+
 - Parameters: `ResourceGroup`, `RequiredTag`, `RequiredValue` (all defaulted)
 - Queries all resources and reports any missing the `environment=lab` tag
 - Excludes VM extensions (`Microsoft.Compute/virtualMachines/extensions`)
-  which are untaggable child resources
+which are untaggable child resources
 - First run identified 30+ non-compliant resources across the environment
 
 **Tag remediation workflow:**
+
 1. Compliance runbook identified drift — 30+ resources missing `environment=lab`
 2. Phase3 Terraform resources fixed by adding `tags` blocks to `main.tf` and
-   pushing through CI/CD pipeline
+pushing through CI/CD pipeline
 3. Key Vault, Log Analytics workspace, action group, and metric alert imported
-   into Terraform state and tagged via `terraform apply`
+into Terraform state and tagged via `terraform apply`
 4. Phase5 brownfield resources (VMs, NICs, disks, public IPs) tagged directly
-   via `az tag update` — not managed by Terraform
+via `az tag update` — not managed by Terraform
 5. Compliance runbook re-run confirmed: **All resources in rg-lab-terraform
-   are compliant**
+are compliant**
 
 Both runbooks committed to repo as `.ps1` files and published in the
 Automation Account.
@@ -801,59 +858,63 @@ Automation Account.
 **Troubleshooting log:**
 
 ### Issue 1 — Tag Policy Blocking Automation Account Identity Assignment
+
 **Cause:** The `allowed-vm-skus` policy blocked assigning a managed identity
-to `vm-lab-app02`.
-**Fix:** Created a targeted policy exemption scoped to `vm-lab-app02`.
+to `vm-lab-app02`. **Fix:** Created a targeted policy exemption scoped to `vm-lab-app02`.
 
 ### Issue 2 — Key Vault Import Failing on Permission Model Change
-**Cause:** Terraform attempted to change `enable_rbac_authorization` from
-`true` to `null` during import, which requires `Microsoft.Authorization/roleAssignments/write`
-— a permission the SP doesn't have.
-**Fix:** Added `enable_rbac_authorization = true` to the Key Vault resource
+
+**Cause:** Terraform attempted to change `enable_rbac_authorization` from `true` to `null` during import, which requires `Microsoft.Authorization/roleAssignments/write` — a permission the SP doesn't have. **Fix:** Added `enable_rbac_authorization = true` to the Key Vault resource
 block to match the existing Azure configuration and prevent Terraform from
 attempting to modify it.
 
 ### Issue 3 — Disk Tag Names Truncated in Compliance Report
-**Cause:** The runbook output truncated long disk names in the formatted table.
-**Fix:** Retrieved full disk names via `az disk list` before tagging.
+
+**Cause:** The runbook output truncated long disk names in the formatted table. **Fix:** Retrieved full disk names via `az disk list` before tagging.
 
 ### Issue 4 — VM Extension Resources Not Taggable
+
 **Cause:** VM extensions (`Microsoft.Compute/virtualMachines/extensions`) are
 child resources that cannot be independently tagged via the Azure Resource
-Manager tagging API.
-**Fix:** Updated the compliance runbook to exclude VM extension resource types
+Manager tagging API. **Fix:** Updated the compliance runbook to exclude VM extension resource types
 from the compliance check. Parent VM tags already cover these resources from
 a governance perspective.
 
 ---
+
 ## Phase 9 — Networking, DNS & Identity
+
 **Started: September 2026**
 
 ### 9.1 — Azure DNS Private Zones ✅
+
 **Completed: September 18, 2026**
 
 Deployed Azure Private DNS zones to provide name resolution within the VNet
 for both the AD environment and Key Vault private endpoint access.
 
 **Private DNS Zone — `lab.local`:**
+
 - Created and linked to `vnet-lab-terraform` (registration disabled)
 - A records added for all four AD environment VMs:
-  - `vm-lab-dc02` → 10.20.1.6
-  - `vm-lab-fs01` → 10.20.1.7
-  - `vm-lab-app01` → 10.20.1.8
-  - `vm-lab-app02` → 10.20.1.9
+  * `vm-lab-dc02` → 10.20.1.6
+  * `vm-lab-fs01` → 10.20.1.7
+  * `vm-lab-app01` → 10.20.1.8
+  * `vm-lab-app02` → 10.20.1.9
 
 **Private DNS Zone — `privatelink.vaultcore.azure.net`:**
+
 - Created and linked to `vnet-lab-terraform`
 - Private endpoint `pe-lab-keyvault` deployed on `snet-servers` (10.20.1.10)
 - Key Vault now resolves privately within the VNet — no public internet path
-  required from lab VMs
+required from lab VMs
 - DNS zone group attached to private endpoint for automatic record management
 
 All resources imported into Terraform state and managed via `phase3-terraform`.
 CI/CD pipeline applied cleanly with no changes after import.
 
 ### 9.2 — VNet Peering / Hub-Spoke Topology ✅
+
 **Completed: September 18, 2026**
 
 Redesigned the network topology from a flat single-VNet model to a hub-spoke
@@ -861,24 +922,28 @@ architecture, migrating Bastion to a dedicated hub VNet and peering it to the
 existing spoke VNet.
 
 **Hub VNet — `vnet-lab-hub` (10.30.0.0/16):**
+
 - Created with dedicated `AzureBastionSubnet` (10.30.1.0/26)
 - Houses shared network services — Bastion and future firewall/NVA resources
 - Peered to spoke VNet with forwarded traffic enabled
 
 **Spoke VNet — `vnet-lab-terraform` (10.20.0.0/16):**
+
 - Existing workload VNet — all lab VMs remain here
 - Peered to hub VNet bidirectionally
 - No longer contains Bastion subnet
 
 **Bastion migration:**
-- Deployed `bastion-hub` (Standard SKU, tunneling enabled) in hub VNet
-- Public IP: `pip-hub-bastion` (20.102.62.64)
+
+- Deployed `bastion-hub` (Standard SKU, tunneling enabled) in hub VNet with
+  dedicated public IP `pip-hub-bastion`
 - Decommissioned `bastion-lab` and `pip-lab-bastion` from spoke VNet
 - Portal confirmed `bastion-hub` as active Bastion for all spoke VMs
 - VM reachability verified via `az vm run-command` — dc02 responded to
-  hostname query through hub Bastion routing
+hostname query through hub Bastion routing
 
 **VNet Peerings:**
+
 - `peer-hub-to-spoke` — hub → spoke, virtual network access and forwarded traffic enabled
 - `peer-spoke-to-hub` — spoke → hub, virtual network access and forwarded traffic enabled
 
@@ -890,12 +955,14 @@ proxy compatibility issue — consistent with the behavior documented in Phase 6
 All VM administration performed via `az vm run-command` as a workaround.
 
 ### 9.3 — Azure Update Manager ✅
+
 **Completed: September 18, 2026**
 
 Deployed Azure Update Manager across the lab VM fleet, providing centralized
 patch visibility and a scheduled maintenance window for automated patching.
 
 **Maintenance Configuration — `mc-lab-windows-updates`:**
+
 - Scope: InGuestPatch (OS-level patching)
 - Schedule: Monthly, third Tuesday, 8:00 PM Eastern, 2-hour window
 - Windows: Critical, Security, and Update Rollup classifications
@@ -904,18 +971,21 @@ patch visibility and a scheduled maintenance window for automated patching.
 - Patch mode: AutomaticByPlatform with bypassPlatformSafetyChecksOnUserSchedule
 
 **VMs enrolled (dc02, fs01, app02):**
+
 - Patch mode set to `AutomaticByPlatform`
 - Assessment mode set to `AutomaticByPlatform`
 - Maintenance configuration assigned via `az maintenance assignment create`
 
 **Assessment results:**
+
 - vm-lab-dc02: 3 pending updates (2 security, 1 other)
 - vm-lab-app02: 3 pending updates (2 security, 1 other)
 - vm-lab-fs01: assessment pending
 - Remaining VMs (dc01-tf, lx01-tf, app01): periodic assessment not enabled —
-  these are baseline/brownfield VMs outside the maintenance scope
+these are baseline/brownfield VMs outside the maintenance scope
 
 **Update Manager dashboard confirmed:**
+
 - 6 machines visible
 - 3 on Customer Managed Schedule
 - Pending Windows updates surfaced with classification breakdown
@@ -924,26 +994,26 @@ patch visibility and a scheduled maintenance window for automated patching.
 **Troubleshooting log:**
 
 ### Issue 1 — Maintenance CLI Extension Parameter Syntax Broken
+
 **Cause:** The `az maintenance configuration create` CLI extension is in preview
-and broke parameter parsing for `--install-patches-windows-parameters`.
-**Fix:** Used `az rest` with the ARM API directly to create the maintenance
+and broke parameter parsing for `--install-patches-windows-parameters`. **Fix:** Used `az rest` with the ARM API directly to create the maintenance
 configuration.
 
 ### Issue 2 — bypassPlatformSafetyChecksOnUserSchedule Required
-**Cause:** Maintenance assignment failed with `UnsupportedResourceOperation`
-because VMs need `bypassPlatformSafetyChecksOnUserSchedule: true` set before
-they can be assigned to a customer-managed schedule.
-**Fix:** Updated all three VMs via `az rest` PATCH to add the bypass flag to
-`automaticByPlatformSettings`.
+
+**Cause:** Maintenance assignment failed with `UnsupportedResourceOperation` because VMs need `bypassPlatformSafetyChecksOnUserSchedule: true` set before
+they can be assigned to a customer-managed schedule. **Fix:** Updated all three VMs via `az rest` PATCH to add the bypass flag to `automaticByPlatformSettings`.
+
 ### 9.4 — Privileged Identity Management (PIM) ⚠️ Blocked
+
 **Attempted: September 18, 2026**
 
-Attempted to configure Azure PIM for just-in-time role activation on
-`rg-lab-terraform`, targeting the `Contributor` role for `lab-admin`.
+Attempted to configure Azure PIM for just-in-time role activation on `rg-lab-terraform`, targeting the `Contributor` role for `lab-admin`.
 
 **Intended configuration:**
+
 - Make `Contributor` on `rg-lab-terraform` an eligible assignment rather
-  than permanent for lab admin users
+than permanent for lab admin users
 - Require MFA and justification on activation
 - Set maximum activation duration to 4 hours
 - Configure email notification to lab administrator on activation
@@ -956,8 +1026,7 @@ PIM for Azure resources requires Entra ID P2 licenses in the same tenant
 as the Azure subscription. The lab Azure subscription is linked to the
 default directory (personal Microsoft account
 tenant), which does not support Entra ID P2 license purchases. The M365
-Business Basic trial and Entra ID P2 trial were activated under
-`TBGWorks.onmicrosoft.com` (a work/school tenant), but the Azure
+Business Basic trial and Entra ID P2 trial were activated under `TBGWorks.onmicrosoft.com` (a work/school tenant), but the Azure
 subscription cannot be managed from that tenant without a subscription
 transfer.
 
@@ -968,29 +1037,38 @@ Azure subscriptions and Entra ID tenants are always aligned to avoid exactly
 this kind of licensing and governance gap.
 
 **What was verified:**
+
 - PIM blade is accessible in the Portal
 - Entra ID P2 trial successfully activated in TBGWorks tenant (1/25 assigned)
 - PIM role structure and Azure resources onboarding flow reviewed
 - Tenant/subscription alignment documented as a prerequisite for PIM deployment
+
 ---
 
 ## Phase 10 — Disaster Recovery Exercise ✅
+
 **Completed: September 20, 2026**
 
 Structured DR exercise across three failure scenarios, validating the backup
 and recovery infrastructure built in Phase 7 and testing operational runbooks
 under simulated incident conditions.
 
+| Scenario | Status |
+| -------- | ------ |
+| 10.1 Accidental resource deletion | Executed |
+| 10.2 Domain controller corruption | Executed through disk restore and NIC; final VM deployment blocked by trial quota |
+| 10.3 Ransomware on file server | Documented only, not executed |
+
 ### 10.0 — Pre-Exercise Verification ✅ Complete
 
 Verified all six VMs have valid recovery points in rsv-lab-eastus before beginning DR scenarios.
 
-| VM | Recovery Point | Timestamp (UTC) | Type |
-|---|---|---|---|
-| vm-lab-dc02 | 930080468930574538 | 2026-09-20 00:56:12 | CrashConsistent |
-| vm-lab-fs01 | 930067525825553164 | 2026-09-20 00:56:09 | CrashConsistent |
-| vm-lab-app01 | 930063802336811598 | 2026-09-20 00:53:01 | CrashConsistent |
-| vm-lab-app02 | 930080340178650937 | 2026-09-20 00:53:57 | CrashConsistent |
+| VM             | Recovery Point     | Timestamp (UTC)     | Type            |
+| -------------- | ------------------ | ------------------- | --------------- |
+| vm-lab-dc02    | 930080468930574538 | 2026-09-20 00:56:12 | CrashConsistent |
+| vm-lab-fs01    | 930067525825553164 | 2026-09-20 00:56:09 | CrashConsistent |
+| vm-lab-app01   | 930063802336811598 | 2026-09-20 00:53:01 | CrashConsistent |
+| vm-lab-app02   | 930080340178650937 | 2026-09-20 00:53:57 | CrashConsistent |
 | vm-lab-dc01-tf | 930064121157849026 | 2026-09-20 00:54:47 | CrashConsistent |
 | vm-lab-lx01-tf | 930068444255577712 | 2026-09-20 00:51:48 | CrashConsistent |
 
@@ -1016,6 +1094,7 @@ Recovery Services Vault backup (recovery point 930080468930574538, captured
 2026-09-20 00:56 UTC, CrashConsistent).
 
 **Recovery procedure executed:**
+
 - Triggered RSV restore-disks job against recovery point from pre-exercise baseline
 - Restore completed with warnings (expected for CrashConsistent snapshot — no VSS quiescing)
 - Retrieved ARM deployment template and restore config from storage container vmlabdc02-14c58d5fea7a431c8b4b258b8fc5e412
@@ -1024,6 +1103,7 @@ Recovery Services Vault backup (recovery point 930080468930574538, captured
 - VM deployment blocked by trial subscription quota constraint (12/12 vCores reported despite only 2 in active use — known Azure free trial quota tracking limitation)
 
 **Guardrails validated during recovery:**
+
 - Azure Policy (allowed-vm-skus) correctly blocked non-approved SKU attempt
 - NSG association enforced automatically on restored NIC
 
@@ -1033,14 +1113,16 @@ is validated correct through disk recovery and NIC provisioning. Post-restore st
 would include non-authoritative AD restore, USN rollback prevention via registry
 flag, and domain replication verification via repadmin /replsummary.
 
-### 10.3 — Scenario: Ransomware Attack on File Server 📋 Documented
+### 10.3 — Scenario: Ransomware Attack on File Server 📋 Documented (not executed)
 
 Trial subscription quota constraints (see 10.2) prevented live execution.
-Full recovery runbook documented below. Restore procedure validated in 10.2.
+This is a written recovery runbook, not a record of a completed exercise. The
+timeline and RTO/RPO figures below are planning targets, not measured results.
+The restore procedure itself was validated in 10.2.
 
 ---
 
-**INCIDENT NARRATIVE**
+**INCIDENT NARRATIVE (simulated scenario)**
 
 At 14:22 EDT, Azure Monitor alerts fire: vm-lab-fs01 CPU spikes to 98% and
 disk write IOPS saturate. A threat actor has gained access via a compromised
@@ -1048,8 +1130,8 @@ service account credential and deployed ransomware. File share contents on
 the D: drive are being encrypted. VSS shadow copies are being deleted via
 vssadmin. The VM is still reachable but the damage is spreading.
 
-You have 11 minutes of backup data that isn't encrypted. The recovery point
-from 00:56 UTC this morning is clean.
+The most recent recovery point is from 00:56 UTC, before the compromise, and
+is treated as clean.
 
 ---
 
@@ -1058,7 +1140,7 @@ from 00:56 UTC this morning is clean.
 Immediately isolate fs01 from the network by removing its NSG association.
 This stops lateral movement while preserving the VM for forensic review.
 
-```bash
+```
 # Isolate fs01 - remove NSG from NIC
 az network nic update \
   --resource-group rg-lab-terraform \
@@ -1075,7 +1157,7 @@ az network nic show \
 Disable the compromised service account in Active Directory immediately via
 dc02 to prevent reuse of the credential elsewhere in the environment.
 
-```bash
+```
 az vm run-command invoke \
   --resource-group rg-lab-terraform \
   --name vm-lab-dc02 \
@@ -1087,7 +1169,7 @@ az vm run-command invoke \
 
 Confirm the last clean recovery point and assess scope of encryption.
 
-```bash
+```
 # Confirm clean recovery point
 az backup recoverypoint list \
   --resource-group rg-lab-terraform \
@@ -1103,7 +1185,7 @@ Do NOT attempt to run commands on the isolated VM — this risks triggering
 additional payloads. The VM is evidence. Leave it isolated and deallocated
 for post-incident forensic review.
 
-```bash
+```
 az vm deallocate \
   --resource-group rg-lab-terraform \
   --name vm-lab-fs01 --no-wait
@@ -1113,7 +1195,7 @@ az vm deallocate \
 
 Trigger RSV restore-disks to a clean storage container.
 
-```bash
+```
 az backup restore restore-disks \
   --resource-group rg-lab-terraform \
   --vault-name rsv-lab-eastus \
@@ -1133,7 +1215,7 @@ Deploy replacement VM (vm-lab-fs01-restored) from restored disk.
 Before bringing the restored file server online, validate domain integrity.
 A ransomware attack that touched a service account may have tampered with AD objects.
 
-```bash
+```
 # Check AD replication health
 az vm run-command invoke \
   --resource-group rg-lab-terraform \
@@ -1160,7 +1242,7 @@ az vm run-command invoke \
 
 Verify restored VM is clean before rejoining domain.
 
-```bash
+```
 # Confirm no ransomware processes running on restored VM
 az vm run-command invoke \
   --resource-group rg-lab-terraform \
@@ -1180,29 +1262,33 @@ Reattach NSG to restored VM NIC and verify domain connectivity.
 Rename original compromised VM to vm-lab-fs01-compromised for forensic retention.
 Update DNS A record in lab.local private DNS zone to point to restored VM IP.
 
-**INCIDENT TIMELINE**
+**TARGET TIMELINE (planned, not measured)**
 
-| Time | Event |
-|------|-------|
-| T+0 | Azure Monitor alert fires — fs01 CPU/IOPS spike |
-| T+3 | Ransomware confirmed — file encryption in progress |
-| T+7 | fs01 NSG removed — VM isolated from network |
-| T+9 | Compromised service account disabled in AD |
-| T+15 | fs01 deallocated — VM preserved for forensics |
-| T+25 | RSV restore-disks job initiated |
-| T+55 | Restore completed with warnings (CrashConsistent) |
-| T+70 | AD integrity validated — no tampering detected |
-| T+95 | Restored VM online and verified clean |
-| T+110 | File share restored and accessible |
-| T+120 | DNS cutover complete — environment fully recovered |
+| Time  | Planned step                                       |
+| ----- | -------------------------------------------------- |
+| T+0   | Azure Monitor alert fires: fs01 CPU/IOPS spike     |
+| T+3   | Ransomware confirmed, file encryption in progress  |
+| T+7   | fs01 NSG removed, VM isolated from network         |
+| T+9   | Compromised service account disabled in AD         |
+| T+15  | fs01 deallocated, VM preserved for forensics       |
+| T+25  | RSV restore-disks job initiated                    |
+| T+55  | Restore expected to complete (CrashConsistent)     |
+| T+70  | AD integrity validated                             |
+| T+95  | Restored VM online and verified clean              |
+| T+110 | File share restored and accessible                 |
+| T+120 | DNS cutover complete, environment recovered        |
 
-**RTO achieved: 2 hours. RPO: ~14 hours (overnight backup window).**
-
+**Target RTO: 2 hours.** **RPO with the current daily backup schedule: up to
+about 17.5 hours** (last recovery point at 00:56 UTC, incident at 14:22 EDT).
+Shortening the RPO would mean more frequent backups, which DefaultPolicy does
+not provide.
 
 ## Phase 11 — Environment Rebuild & Hybrid Identity
+
 **Started: September 24, 2026**
 
 ### 11.1 — Subscription Migration & Environment Rebuild ✅ Complete
+
 **Completed: September 24, 2026**
 
 Migrated from a personal Microsoft account-linked Azure subscription to a
@@ -1210,14 +1296,15 @@ subscription under the TBGWorks.onmicrosoft.com tenant, aligning Azure and
 Entra ID for hybrid identity work in Phase 11.2+.
 
 **Changes made during rebuild:**
-- New subscription: bfcdf712-b22e-445b-99cf-f326a26fa4a3 (TBGWorks tenant)
-- New service principal: sp-terraform-lab (appId: 952ecd88-606b-49ac-a24d-ce8fc55d8768)
+
+- New subscription under the TBGWorks tenant
+- New service principal `sp-terraform-lab` for Terraform and CI/CD
 - Storage account renamed: stlabterraformstate → stlabtfstate2026 (global name conflict)
 - Key Vault renamed: kv-lab-terraform → kv-lab2-terraform (soft-delete name reservation from old subscription)
 - Provider upgraded: azurerm ~> 3.0 → ~> 4.0
 - Removed deprecated lifecycle workarounds (ignore_changes on ssh key, prevent_destroy on Key Vault)
 - Fixed hardcoded subscription IDs — now use var.subscription_id throughout
-- Alert email updated to KevinWoods@TBGWorks.onmicrosoft.com
+- Alert email updated to the TBGWorks lab admin mailbox
 - AllowVnetInbound NSG rule added (was missing from phase3 config)
 - Action group ID now references resource directly instead of hardcoded ARM ID
 - depends_on added to metric alert to prevent race condition with VM creation
@@ -1227,19 +1314,23 @@ Entra ID for hybrid identity work in Phase 11.2+.
 **Troubleshooting log:**
 
 #### Issue 1 — Backend Storage Account Bootstrap
+
 Terraform cannot create its own state backend. Manually created rg-lab-terraform
 and stlabtfstate2026 via portal before first pipeline run, then imported the
 resource group into state.
 
 #### Issue 2 — Key Vault Soft-Delete Conflict
+
 kv-lab-terraform name reserved globally from deleted old subscription vault
 (90-day soft-delete retention). Renamed to kv-lab2-terraform to unblock apply.
 
 #### Issue 3 — Metric Alert Race Condition
+
 azurerm_monitor_metric_alert tried to reference vm-lab-dc01-tf before it existed.
 Fixed with depends_on = [azurerm_windows_virtual_machine.dc01].
 
 #### Issue 4 — Phase5 Plan Blocking Phase3 Apply
+
 Phase5 data sources reference VNet and NSG that don't exist on a fresh environment.
 Phase5 plan was failing and blocking the apply job due to matrix job failure propagation.
 Fixed by adding continue-on-error: true to the phase5 matrix entry.
