@@ -392,7 +392,7 @@ resource "azurerm_network_interface" "sync01" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.servers.id
     private_ip_address_allocation = "Static"
-    private_ip_address            = "10.20.1.5"
+    private_ip_address            = "10.20.1.20"
   }
   tags = { environment = "lab" }
 }
