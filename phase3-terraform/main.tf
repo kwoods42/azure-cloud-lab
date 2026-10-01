@@ -401,7 +401,7 @@ resource "azurerm_windows_virtual_machine" "sync01" {
   name                  = "vm-lab-sync01"
   location              = azurerm_resource_group.lab.location
   resource_group_name   = azurerm_resource_group.lab.name
-  size                  = "Standard_B2ms"
+  size                  = "Standard_D2s_v4"
   admin_username        = var.admin_username
   admin_password        = var.admin_password
   network_interface_ids = [azurerm_network_interface.sync01.id]
