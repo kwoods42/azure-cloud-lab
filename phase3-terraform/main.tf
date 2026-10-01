@@ -155,7 +155,8 @@ resource "azurerm_network_interface" "lx01" {
   ip_configuration {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.servers.id
-    private_ip_address_allocation = "Dynamic"
+    private_ip_address_allocation = "Static"
+    private_ip_address            = "10.20.1.5"
   }
   tags = { environment = "lab" }
 }
@@ -190,13 +191,13 @@ resource "azurerm_linux_virtual_machine" "lx01" {
 }
 
 resource "azurerm_key_vault" "lab" {
-  name                      = "kv-lab2-terraform"
-  location                  = azurerm_resource_group.lab.location
-  resource_group_name       = azurerm_resource_group.lab.name
-  tenant_id                 = var.tenant_id
-  sku_name                  = "standard"
-  enable_rbac_authorization = true
-  tags                      = { environment = "lab" }
+  name                       = "kv-lab2-terraform"
+  location                   = azurerm_resource_group.lab.location
+  resource_group_name        = azurerm_resource_group.lab.name
+  tenant_id                  = var.tenant_id
+  sku_name                   = "standard"
+  rbac_authorization_enabled = true
+  tags                       = { environment = "lab" }
 }
 
 resource "azurerm_log_analytics_workspace" "lab" {
