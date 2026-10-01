@@ -1333,4 +1333,123 @@ Fixed with depends_on = [azurerm_windows_virtual_machine.dc01].
 
 Phase5 data sources reference VNet and NSG that don't exist on a fresh environment.
 Phase5 plan was failing and blocking the apply job due to matrix job failure propagation.
-Fixed by adding continue-on-error: true to the phase5 matrix entry.
+Fixed by adding continue-on-error: true to the phase5 matrix entry.## Phase 11: Rebuild and Hybrid Identity
+
+**Goal:** Tear the lab down and rebuild it from code in a subscription aligned with the TBGWorks tenant, then build a real hybrid identity path by syncing the on-prem `lab.local` forest to Entra ID.
+
+**Status:** Complete
+
+### 11.1 Environment rebuild
+
+The original subscription was tied to a personal Microsoft account tenant, which blocked Entra Connect and PIM (the Phase 9.4 wall). The rebuild moved everything to a new subscription under the TBGWorks tenant.
+
+What changed:
+- New service principal `sp-terraform-lab`, new Terraform state backend `stlabtfstate2026`, new Key Vault `kv-lab2-terraform`
+- Storage account and Key Vault names changed because of global name conflicts and soft-delete name reservations left by the old subscription
+- `azurerm` provider upgraded from `~> 3.0` to `~> 4.0`, and the lifecycle workarounds that had accumulated were removed
+- Pipeline (GitHub Actions + Terraform) rebuilt 28 resources: hub-spoke VNets, NSG, two VMs, Key Vault with private endpoint, private DNS zones, Log Analytics, alerting, and Bastion
+
+Bootstrap problems hit and solved:
+- **Backend chicken-and-egg:** the state storage account has to exist before Terraform can run, so it is created by hand, then the pipeline takes over
+- **Existing resource group:** import into state before the first apply
+- **RBAC limits:** the service principal has Contributor but not User Access Administrator, so the Storage Blob Data Contributor assignment on the state account is a one-time portal step. This is deliberate least privilege. The cost is a manual step per rebuild.
+- **Conditional Access:** device-code login was blocked for the admin account, so service principal credentials were reset through the portal. The admin account also had to be added as an owner of the app registration first.
+
+### 11.2 Active Directory
+
+`vm-lab-dc01-tf` was promoted to a new `lab.local` forest with `az vm run-command`, with the DSRM password read from Key Vault so it never appears in a terminal history or a chat.
+
+- `dcdiag` returned one failure (`DFSREvent`), a known false alarm on a first DC: it flags SYSVOL replication events logged before SYSVOL was shared. Confirmed SYSVOL and NETLOGON shares exist.
+- DNS: forwarder to the Azure resolver (`168.63.129.16`), plus a conditional forwarder for `privatelink.vaultcore.azure.net` so the Key Vault private endpoint still resolves from inside the domain
+- **Found and fixed a dynamic IP on the domain controller.** A DC on a DHCP lease breaks DNS for the whole domain after a deallocate cycle. Pinned to `10.20.1.4` in Azure, then in Terraform so the next apply could not revert it.
+- VNet DNS set to the DC, and the same setting added to Terraform so it is not drift
+- Alternate UPN suffix `TBGWorks.onmicrosoft.com`, because `lab.local` is non-routable and cannot be verified in a public tenant
+- `LabSync` OU with a `LabSync-Users` group and three test users (`alice.lab`, `bob.lab`, `carol.lab`). Sync scope is limited to this OU so built-in and admin accounts stay out of the cloud.
+
+### 11.3 Entra Connect Sync
+
+**The first install failed, and the cause was the VM size.** Entra Connect's default LocalDB (SQL Server 2022) would not start on the domain controller. The installer error was generic ("LocalDB powershell operation failed"), and the `ADSync` service was never created. The trace log and event log pointed at LocalDB, and LocalDB's own error log gave the root cause:
+
+> Error 5178: file was originally formatted with sector size 4096 and is now on a volume with sector size 8192
+
+`fsutil fsinfo sectorinfo C:` confirmed the disk reports 8192-byte physical sectors. `Standard_D2s_v7` uses an NVMe disk controller, and SQL Server's template database files are built for 4096. Rather than patch the driver on a domain controller, the fix was a **dedicated sync server** on a SCSI-backed size, which is also Microsoft's recommended placement.
+
+Finding a size took three tries and is worth recording:
+- `Standard_B2ms`: quota available, but capacity-restricted in East US (`SkuNotAvailable`)
+- `Standard_D2s_v3`: not offered to this subscription in East US
+- Dsv5 family: quota of 0 on the new subscription
+- `Standard_D2s_v4`: available, SCSI-backed, deployed as `vm-lab-sync01` at `10.20.1.20`. `fsutil` showed 4096-byte sectors.
+
+An address collision on the way: the first choice, `10.20.1.5`, was held by the dynamic lease on `lx01`. Azure rejected the NIC. `lx01` is now pinned to `10.20.1.5` as well.
+
+Install choices:
+- Custom install, **Password Hash Synchronization**, sync scoped to the `LabSync` OU
+- Domain join of `vm-lab-sync01` to `lab.local` with `az vm run-command`
+- The wizard **refused Enterprise Admin credentials** as the sync account (newer builds block this). Fix: use the admin credentials once and let the wizard create a scoped `MSOL_` connector account.
+- The UPN page listed both suffixes as "Not Added" for the Entra domain. The users still synced with `@tbgworks.onmicrosoft.com` UPNs.
+
+Verification:
+- Event log: credentials batch of 3 objects (events 650/651) and password change results (656/657) with `Result : Success`
+- Entra ID shows exactly the three `.lab` users alongside the existing cloud users. No `Administrator`, admin, or service accounts synced, so the OU filter works.
+- `alice.lab` signed in to `myaccount.microsoft.com` with her synced password. The profile shows as managed by an on-prem directory.
+- No MFA prompt on that sign-in. The tenant's only Conditional Access policy is report-only (see Phase 12).
+
+### 11.4 Cleanup
+
+- `lx01` NIC pinned to a static address
+- Deprecated `enable_rbac_authorization` renamed to `rbac_authorization_enabled`
+- Plan before apply showed one in-place NIC update and nothing else. Apply result: 0 added, 1 changed, 0 destroyed.
+
+### Lessons
+
+- The newest VM sizes can have 8K sectors. SQL Server 2022 LocalDB, which is the Entra Connect default, fails to start on them.
+- Check SKU capacity and quota for a size before building on it. Quota and capacity are separate problems.
+- Pin static IPs on anything that other things depend on, including DNS servers.
+- Install Entra Connect on a dedicated member server, not a domain controller.
+
+---
+
+## Phase 12: Privileged Identity Management
+
+**Goal:** Replace standing admin access with just-in-time, approved, audited access.
+
+**Status:** In progress. Core PIM flow and break-glass account complete. Items below marked open.
+
+**Licensing note:** the tenant has 25 Entra ID P2 licenses on a trial that ends 10/7/2026 (Business Basic ends 10/6). The configuration below was built and evidenced inside that window.
+
+### 12.1 Eligible assignment with approval
+
+- Created a cloud-only test account (`pim-test`), licensed for P2, with Authenticator registered
+- Made it **eligible** (not active) for Helpdesk Administrator
+- Role settings: Azure MFA on activation, justification required, approval required, 2 hour maximum
+
+### 12.2 The tested flow
+
+| Step | Result |
+|---|---|
+| Request with a weak reason | Submitted with a throwaway justification |
+| Approver review | **Denied** with the reason "not a sufficient reason" |
+| Resubmission | New request created |
+| Approval | Approved, and the approver **shortened the grant to 30 minutes** (requested: 2 hours) |
+| Privileged action | Password reset on a cloud-only test account **succeeded** |
+| Deactivation | Role deactivated early |
+| Same action again | **Refused** with an authorization error |
+
+The audit log records every step with timestamps, including the denial reason. The negative test (same account, same action, refused after deactivation) is what shows access actually disappears.
+
+### 12.3 Alerts
+
+PIM's seven built-in alert types are enabled. A scan returned no findings. Plausible reasons: only one role has eligible assignments (and it requires MFA), the tenant has few administrators, and several alerts use time windows or thresholds sized for larger tenants. Recorded as a clean result, not as proof of a hardened tenant.
+
+### 12.4 Break-glass account
+
+Before converting any named admin to eligible, a cloud-only emergency account (`Emergency Access`) was created as a permanent Global Administrator. Its sign-in was tested, and it is excluded from the tenant's all-users MFA policy so that enabling the policy later cannot lock it out. In production this account would use two hardware keys, have no license or mailbox, and have an alert on any sign-in.
+
+### Known gaps and open items
+
+- **Standing Global Admin access:** two named admins still hold permanent Global Administrator. PIM does not allow an admin to modify their own assignment, so converting one account requires a second admin. Planned approach: make one account eligible, activate it, and convert the other from that session.
+- **Conditional Access:** one policy exists (require MFA for all users) and is in **report-only** mode. Next step is to review its results and enable it. Enabling it forces MFA registration for every synced and cloud account, so it was left off during the trial window.
+- **Access reviews on a privileged role:** not yet attempted. May be limited by licensing (ID Governance shows 0 licenses).
+- **Second role with different settings:** not yet built.
+- **Password writeback:** not configured, so resetting a synced user's password in the cloud will not work. On-prem AD remains the source of authority.
+- **Trusted Platform Module:** the Entra Connect wizard recommends one for the sync server. Trusted Launch with vTPM is the Azure-native route and was not enabled in the lab.
