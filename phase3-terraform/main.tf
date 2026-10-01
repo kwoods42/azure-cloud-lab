@@ -35,6 +35,7 @@ resource "azurerm_virtual_network" "lab" {
   location            = azurerm_resource_group.lab.location
   resource_group_name = azurerm_resource_group.lab.name
   address_space       = ["10.20.0.0/16"]
+  dns_servers         = ["10.20.1.4"]
   tags                = { environment = "lab" }
 }
 
@@ -115,7 +116,8 @@ resource "azurerm_network_interface" "dc01" {
   ip_configuration {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.servers.id
-    private_ip_address_allocation = "Dynamic"
+    private_ip_address_allocation = "Static"
+    private_ip_address            = "10.20.1.4"
   }
   tags = { environment = "lab" }
 }
@@ -380,4 +382,38 @@ resource "azurerm_virtual_network_peering" "spoke_to_hub" {
   remote_virtual_network_id    = azurerm_virtual_network.hub.id
   allow_virtual_network_access = true
   allow_forwarded_traffic      = true
+}
+
+resource "azurerm_network_interface" "sync01" {
+  name                = "nic-lab-sync01"
+  location            = azurerm_resource_group.lab.location
+  resource_group_name = azurerm_resource_group.lab.name
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.servers.id
+    private_ip_address_allocation = "Static"
+    private_ip_address            = "10.20.1.5"
+  }
+  tags = { environment = "lab" }
+}
+
+resource "azurerm_windows_virtual_machine" "sync01" {
+  name                  = "vm-lab-sync01"
+  location              = azurerm_resource_group.lab.location
+  resource_group_name   = azurerm_resource_group.lab.name
+  size                  = "Standard_B2ms"
+  admin_username        = var.admin_username
+  admin_password        = var.admin_password
+  network_interface_ids = [azurerm_network_interface.sync01.id]
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2022-datacenter-g2"
+    version   = "latest"
+  }
+  tags = { environment = "lab" }
 }
