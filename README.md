@@ -12,7 +12,7 @@ Hands-on Azure infrastructure lab documenting my build-out from a VMware/AD engi
 - **Operations:** Azure Monitor with KQL and Workbooks, PowerShell Automation runbooks, Update Manager patching, Azure Backup.
 - **Recovery testing:** Rebuilt 29 Terraform-managed resources from destroyed state using imports, and restored a domain controller disk from backup. Two DR scenarios were limited by trial-subscription quota and are labeled as such.
 - **Honest by design:** Every phase includes the errors I hit and how I fixed them, and blocked items are marked as blocked.
-- **Status:** Phase 11 (hybrid identity) in progress.
+- **Status:** Complete through Phase 12 (PIM and Conditional Access).
 
 ### Architecture
 
@@ -1287,6 +1287,8 @@ not provide.
 
 **Started: September 24, 2026**
 
+**Status:** Complete
+
 ### 11.1 — Subscription Migration & Environment Rebuild ✅ Complete
 
 **Completed: September 24, 2026**
@@ -1333,27 +1335,7 @@ Fixed with depends_on = [azurerm_windows_virtual_machine.dc01].
 
 Phase5 data sources reference VNet and NSG that don't exist on a fresh environment.
 Phase5 plan was failing and blocking the apply job due to matrix job failure propagation.
-Fixed by adding continue-on-error: true to the phase5 matrix entry.## Phase 11: Rebuild and Hybrid Identity
-
-**Goal:** Tear the lab down and rebuild it from code in a subscription aligned with the TBGWorks tenant, then build a real hybrid identity path by syncing the on-prem `lab.local` forest to Entra ID.
-
-**Status:** Complete
-
-### 11.1 Environment rebuild
-
-The original subscription was tied to a personal Microsoft account tenant, which blocked Entra Connect and PIM (the Phase 9.4 wall). The rebuild moved everything to a new subscription under the TBGWorks tenant.
-
-What changed:
-- New service principal `sp-terraform-lab`, new Terraform state backend `stlabtfstate2026`, new Key Vault `kv-lab2-terraform`
-- Storage account and Key Vault names changed because of global name conflicts and soft-delete name reservations left by the old subscription
-- `azurerm` provider upgraded from `~> 3.0` to `~> 4.0`, and the lifecycle workarounds that had accumulated were removed
-- Pipeline (GitHub Actions + Terraform) rebuilt 28 resources: hub-spoke VNets, NSG, two VMs, Key Vault with private endpoint, private DNS zones, Log Analytics, alerting, and Bastion
-
-Bootstrap problems hit and solved:
-- **Backend chicken-and-egg:** the state storage account has to exist before Terraform can run, so it is created by hand, then the pipeline takes over
-- **Existing resource group:** import into state before the first apply
-- **RBAC limits:** the service principal has Contributor but not User Access Administrator, so the Storage Blob Data Contributor assignment on the state account is a one-time portal step. This is deliberate least privilege. The cost is a manual step per rebuild.
-- **Conditional Access:** device-code login was blocked for the admin account, so service principal credentials were reset through the portal. The admin account also had to be added as an owner of the app registration first.
+Fixed by adding continue-on-error: true to the phase5 matrix entry.
 
 ### 11.2 Active Directory
 
@@ -1383,16 +1365,16 @@ Finding a size took three tries and is worth recording:
 An address collision on the way: the first choice, `10.20.1.5`, was held by the dynamic lease on `lx01`. Azure rejected the NIC. `lx01` is now pinned to `10.20.1.5` as well.
 
 Install choices:
-- Custom install, **Password Hash Synchronization**, sync scoped to the `LabSync` OU
-- Domain join of `vm-lab-sync01` to `lab.local` with `az vm run-command`
+- Custom install, **Password Hash Synchronization**
+- `vm-lab-sync01` is a standalone server and is **not domain-joined** (confirmed later: no computer account for it exists in AD). The wizard still works because it reaches AD over the network using `lab.local\azureadmin` once, then creates its own connector account. A domain-joined sync server is the usual recommendation. For a single-forest lab the standalone design is supported and worked.
 - The wizard **refused Enterprise Admin credentials** as the sync account (newer builds block this). Fix: use the admin credentials once and let the wizard create a scoped `MSOL_` connector account.
 - The UPN page listed both suffixes as "Not Added" for the Entra domain. The users still synced with `@tbgworks.onmicrosoft.com` UPNs.
 
+**OU filter correction.** When the wizard was reopened to enable password writeback, Domain and OU filtering showed "Sync all domains and OUs", so the intended LabSync-only scope had not been persisted. It was reset to LabSync only. After the forced full import, the Entra user list showed exactly three on-premises-synced accounts (`alice.lab`, `bob.lab`, `carol.lab`) and every other account cloud-only, with no `Administrator`, `azureadmin` or `MSOL_` account synced.
+
 Verification:
 - Event log: credentials batch of 3 objects (events 650/651) and password change results (656/657) with `Result : Success`
-- Entra ID shows exactly the three `.lab` users alongside the existing cloud users. No `Administrator`, admin, or service accounts synced, so the OU filter works.
 - `alice.lab` signed in to `myaccount.microsoft.com` with her synced password. The profile shows as managed by an on-prem directory.
-- No MFA prompt on that sign-in. The tenant's only Conditional Access policy is report-only (see Phase 12).
 
 ### 11.4 Cleanup
 
@@ -1405,17 +1387,18 @@ Verification:
 - The newest VM sizes can have 8K sectors. SQL Server 2022 LocalDB, which is the Entra Connect default, fails to start on them.
 - Check SKU capacity and quota for a size before building on it. Quota and capacity are separate problems.
 - Pin static IPs on anything that other things depend on, including DNS servers.
-- Install Entra Connect on a dedicated member server, not a domain controller.
+- Install Entra Connect on a dedicated server, not a domain controller.
+- Do not trust a wizard's saved scope. Re-open it and check the result in the directory.
 
 ---
 
-## Phase 12: Privileged Identity Management
+## Phase 12: Privileged Identity Management and Conditional Access
 
-**Goal:** Replace standing admin access with just-in-time, approved, audited access.
+**Goal:** Replace standing admin access with just-in-time, approved, audited access, and enforce MFA tenant-wide.
 
-**Status:** In progress. Core PIM flow and break-glass account complete. Items below marked open.
+**Status:** Complete
 
-**Licensing note:** the tenant has 25 Entra ID P2 licenses on a trial that ends 10/7/2026 (Business Basic ends 10/6). The configuration below was built and evidenced inside that window.
+**Licensing note:** the tenant has 25 Entra ID P2 licenses on a trial that ends 10/7/2026 (Business Basic ends 10/6). Everything below was built and evidenced inside that window.
 
 ### 12.1 Eligible assignment with approval
 
@@ -1439,17 +1422,57 @@ The audit log records every step with timestamps, including the denial reason. T
 
 ### 12.3 Alerts
 
-PIM's seven built-in alert types are enabled. A scan returned no findings. Plausible reasons: only one role has eligible assignments (and it requires MFA), the tenant has few administrators, and several alerts use time windows or thresholds sized for larger tenants. Recorded as a clean result, not as proof of a hardened tenant.
+PIM's seven built-in alert types are enabled. A scan returned no findings. Plausible reasons: only one role had eligible assignments (and it requires MFA), the tenant has few administrators, and several alerts use time windows or thresholds sized for larger tenants. Recorded as a clean result, not as proof of a hardened tenant.
 
 ### 12.4 Break-glass account
 
-Before converting any named admin to eligible, a cloud-only emergency account (`Emergency Access`) was created as a permanent Global Administrator. Its sign-in was tested, and it is excluded from the tenant's all-users MFA policy so that enabling the policy later cannot lock it out. In production this account would use two hardware keys, have no license or mailbox, and have an alert on any sign-in.
+Before converting any named admin to eligible, a cloud-only emergency account (`Emergency Access`) was created as a permanent Global Administrator. Its sign-in was tested. It is the only account excluded from the Conditional Access policy, so the policy cannot lock it out. In production this account would use two hardware keys, have no license or mailbox, and have an alert on any sign-in.
 
-### Known gaps and open items
+### 12.5 Standing Global Administrator removed
 
-- **Standing Global Admin access:** two named admins still hold permanent Global Administrator. PIM does not allow an admin to modify their own assignment, so converting one account requires a second admin. Planned approach: make one account eligible, activate it, and convert the other from that session.
-- **Conditional Access:** one policy exists (require MFA for all users) and is in **report-only** mode. Next step is to review its results and enable it. Enabling it forces MFA registration for every synced and cloud account, so it was left off during the trial window.
-- **Access reviews on a privileged role:** not yet attempted. May be limited by licensing (ID Governance shows 0 licenses).
-- **Second role with different settings:** not yet built.
-- **Password writeback:** not configured, so resetting a synced user's password in the cloud will not work. On-prem AD remains the source of authority.
-- **Trusted Platform Module:** the Entra Connect wizard recommends one for the sync server. Trusted Launch with vTPM is the Azure-native route and was not enabled in the lab.
+PIM does not let an admin change their own assignment, so the conversion had to be done from a second admin. The two named admins were converted so that both are now **eligible** for Global Administrator, with the break-glass account as the only permanent holder. Admin work now starts with a PIM activation that expires on its own.
+
+### 12.6 Second role with different settings
+
+`User Administrator` was configured differently from Helpdesk Administrator: 1 hour maximum, no approval required. The point is that role settings are per role and should match the risk of the role: high-impact roles get approval and short windows, lower-impact roles get a lighter flow.
+
+### 12.7 Access review on a privileged role
+
+An access review was created on Global Administrator. Reviewers were chosen from the portal's options (specific users or groups, members reviewing themselves, or managers). The review duration was fixed at one day (the field was not editable in this tenant). Auto-apply was left off and the no-response fallback set to "no change", so a missed review cannot silently remove access. Decisions recorded: one **Deny** and two **Approve**. Self-review is acceptable in a one-admin lab and would not be in production, where reviewers should be someone other than the member being reviewed. The decisions appear in the audit export (`evidence/phase12-pim-audit-log.csv`).
+
+### 12.8 Trusted Launch on the sync server
+
+The Entra Connect wizard recommends a TPM on the sync server. `vm-lab-sync01` now has Secure Boot and vTPM enabled, set in Terraform so it is not drift (commit `82aeff2`). The pipeline plan after that change showed no changes.
+
+### 12.9 Password writeback
+
+Writeback was enabled in the Entra Connect wizard under Optional features, alongside password hash sync (which stays on). Enabling it also needed Self-Service Password Reset on, and a P1/P2 license on the synced user (`bob.lab` holds Entra ID P2).
+
+Test: an admin reset of `bob.lab`'s password in the Entra portal returned "Password has been reset". The domain controller's security log then recorded **event 4724** (an attempt was made to reset an account's password) for `bob.lab`, performed by the `MSOL_` connector account at 20:11:52 UTC, within seconds of the portal reset. A password reset in the cloud now changes the password in on-prem AD. AD's `PasswordLastSet` reads empty for `bob.lab` afterward because the temporary password carries the change-at-next-logon flag.
+
+### 12.10 Conditional Access
+
+One policy, **Require MFA for ALL Users**, was in report-only mode. The impact report over 7 days showed 32% of evaluated sign-ins passing and 68% not applied, with no failures.
+
+That report was not enough to enable the policy, and checking why turned up a real conflict: a sign-in by `alice.lab` showed **Security Defaults** as the control that handled it, not the policy. Security Defaults and Conditional Access cannot both be enforced. During this work Security Defaults was seen switching from Disabled back to Enabled without a deliberate change, most likely because Microsoft re-enables it in a tenant with no enforced Conditional Access policy (not confirmed).
+
+Steps taken:
+1. Turned Security Defaults off, choosing "My organization is using Conditional Access", and accepted the portal's warning that the tenant has no MFA enforcement until the policy replaces it
+2. Enabled the policy immediately, with the break-glass account and the admin account excluded as a safety net
+3. Tested with `alice.lab`: password alone no longer finishes the sign-in. The Authenticator number-match prompt appears first. The interactive sign-in log shows authentication requirement **Multifactor authentication** and Conditional Access **Success**. A wrong-password attempt just before it shows Conditional Access **Not Applied**, since it never got past the password.
+4. Removed the admin account from the exclusions, leaving only the break-glass account, and tested a sign-in as the admin: MFA prompt, then profile page
+
+Evidence: `evidence/phase12-ca-signins.csv` (IP address, location, user agent, device and ASN columns removed).
+
+### Evidence files
+
+- `evidence/phase12-pim-audit-log.csv`: PIM requests, denial, approval, access review creation and decisions
+- `evidence/phase12-ca-signins.csv`: the alice.lab sign-ins under the enforced policy
+
+### Differences from production
+
+These are deliberate lab choices, not unfinished work:
+- One admin account family and a single break-glass account. Production would have two break-glass accounts on hardware keys with sign-in alerting.
+- Access review self-review, as noted in 12.7
+- Sync server not domain-joined, as noted in 11.3
+- Licensing is trial-based. When the trials end on 10/6 and 10/7, P2 features (PIM, access reviews) stop being configurable. The configuration and evidence in this repository are the record.
