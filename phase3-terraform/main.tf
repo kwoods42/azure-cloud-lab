@@ -416,5 +416,7 @@ resource "azurerm_windows_virtual_machine" "sync01" {
     sku       = "2022-datacenter-g2"
     version   = "latest"
   }
-  tags = { environment = "lab" }
+  secure_boot_enabled = true
+  vtpm_enabled        = true
+  tags                = { environment = "lab" }
 }
