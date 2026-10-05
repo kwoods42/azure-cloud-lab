@@ -1512,3 +1512,7 @@ Terraform builds the infrastructure only. Everything inside the VMs and the tena
 - Install Entra Connect on `vm-lab-sync01`, apply the OU filter, and enable writeback.
 - Recreate the tenant-side configuration: PIM, Conditional Access and the access review. These need an Entra ID P2 license, and the trial used for this lab ended October 7, 2026.
 - Synced objects from the first build remain in the Entra tenant. Review them, and decide whether to disable directory sync, before running Entra Connect again.
+
+### 13.4 CI workflow
+
+The GitHub Actions workflow `terraform.yml` was disabled after the teardown. Its plan looks up `vnet-lab-terraform` and `nsg-lab-servers` as existing resources. Both were destroyed, so every push failed with "was not found". The config that creates app01, app02, dc02 and fs01 depends on the phase 3 network, so rebuild phase 3 first, then re-enable the workflow from the repo Actions tab.
