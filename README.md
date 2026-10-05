@@ -12,7 +12,7 @@ Hands-on Azure infrastructure lab documenting my build-out from a VMware/AD engi
 - **Operations:** Azure Monitor with KQL and Workbooks, PowerShell Automation runbooks, Update Manager patching, Azure Backup.
 - **Recovery testing:** Rebuilt 29 Terraform-managed resources from destroyed state using imports, and restored a domain controller disk from backup. Two DR scenarios were limited by trial-subscription quota and are labeled as such.
 - **Honest by design:** Every phase includes the errors I hit and how I fixed them, and blocked items are marked as blocked.
-- **Status:** Complete through Phase 12 (PIM and Conditional Access).
+- **Status:** Complete through Phase 12 (PIM and Conditional Access). Lab destroyed October 5, 2026 (see Phase 13).
 
 ### Architecture
 
@@ -1476,3 +1476,39 @@ These are deliberate lab choices, not unfinished work:
 - Access review self-review, as noted in 12.7
 - Sync server not domain-joined, as noted in 11.3
 - Licensing is trial-based. When the trials end on 10/6 and 10/7, P2 features (PIM, access reviews) stop being configurable. The configuration and evidence in this repository are the record.
+
+## Phase 13: Teardown and Redeploy Notes
+
+**Completed: October 5, 2026**
+
+The lab was destroyed once the project was documented. The Terraform state backend (`stlabtfstate2026`) and its resource group were kept so a rebuild starts from a working backend.
+
+### 13.1 Teardown sequence
+
+1. Deallocated all three VMs (`az vm deallocate`) to stop compute billing while deciding on the end state.
+2. Deleted Bastion (`bastion-hub`) and its public IP (`pip-hub-bastion`) with `az network bastion delete` and `az network public-ip delete`. Bastion Standard was the largest ongoing cost. Terraform still listed both, so no `terraform apply` was run until the destroy.
+3. Removed the resource group from state with `terraform state rm azurerm_resource_group.lab`. `stlabtfstate2026` was created by hand inside `rg-lab-terraform`, so a plain destroy would have targeted the group holding the state backend. With the group out of state, Terraform deletes the 28 resources inside it individually and leaves the group alone.
+4. Ran `terraform plan -destroy -out=destroy.tfplan` and confirmed 28 resources to destroy, with no resource group and no storage account in the plan.
+5. Applied the saved plan: `Apply complete! Resources: 0 added, 0 changed, 28 destroyed.`
+6. Deleted `destroy.tfplan` and the plan text afterward, because a saved plan can contain sensitive variable values such as the VM admin password.
+
+Result: `rg-lab-terraform` holds only `stlabtfstate2026`, and Terraform state is empty.
+
+### 13.2 Redeploy checklist
+
+1. **Import the resource group.** It is no longer in state, so the first apply fails with "already exists" unless you run:
+   `terraform import azurerm_resource_group.lab /subscriptions/<subscription-id>/resourceGroups/rg-lab-terraform`
+2. **Provide the admin password directly.** It normally comes from `kv-lab2-terraform`, which was destroyed with the lab. Set `TF_VAR_admin_password` for the first run and store it in the new vault afterward.
+3. **Check Key Vault soft-delete.** A deleted vault name stays reserved. Check `az keyvault list-deleted` and purge or recover `kv-lab2-terraform` if the apply fails on the name.
+4. **Restore local inputs.** `lab-env.sh` and the SSH public key exist only on the workstation and are not in the repo.
+5. **Run `terraform apply`.** This recreates the network, Bastion, dc01, lx01, sync01, private DNS, Key Vault, private endpoint, Log Analytics and alerts.
+
+### 13.3 Manual steps after Terraform
+
+Terraform builds the infrastructure only. Everything inside the VMs and the tenant is repeated by hand from the earlier phases:
+
+- Promote `vm-lab-dc01-tf` to a domain controller and recreate the OUs and users.
+- Join `vm-lab-lx01-tf` to the domain as before. `vm-lab-sync01` stays a standalone server and is not domain-joined.
+- Install Entra Connect on `vm-lab-sync01`, apply the OU filter, and enable writeback.
+- Recreate the tenant-side configuration: PIM, Conditional Access and the access review. These need an Entra ID P2 license, and the trial used for this lab ended October 7, 2026.
+- Synced objects from the first build remain in the Entra tenant. Review them, and decide whether to disable directory sync, before running Entra Connect again.
