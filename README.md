@@ -4,7 +4,7 @@ Hands-on Azure infrastructure lab documenting my build-out from a VMware/AD engi
 
 ## At a Glance
 
-- **Who:** 22+ years of enterprise VMware, Active Directory, and PowerShell experience, building cloud skills the hands-on way.
+- **Who:** 22+ years of enterprise VMware, Windows Server. Active Directory, and PowerShell experience, building cloud skills the hands-on way.
 - **What:** A three-tier Windows environment (AD, file services, IIS, SQL) plus Linux, running in Azure in a hub-spoke network.
 - **Infrastructure as code:** Terraform with remote state in Azure Storage, deployed through GitHub Actions (plan on every push, apply on merge).
 - **Identity and governance:** Entra ID, RBAC, Conditional Access (report-only), Azure Policy, Key Vault for secrets, tiered admin accounts in AD.
